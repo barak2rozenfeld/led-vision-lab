@@ -1,0 +1,60 @@
+---
+description: Core project rules for LED Vision Lab — always applied to every session
+alwaysApply: true
+---
+
+# LED Vision Lab — Agent Rules
+
+## Source of Truth
+Before any implementation, read `Goal.md`, `Roadmap.md`, `Architecture.md`, and `AI Agent Instructions.md`.
+
+## Discuss Before Implementing
+**Always propose and discuss a plan with the user before writing code.**
+Get explicit approval before starting implementation of any phase or feature.
+
+## One Phase at a Time
+Work only on the current Roadmap phase. Do not implement future phases unless explicitly requested.
+
+## Architecture Must Be Respected
+- All detectors implement the common `LedDetector` interface
+- No CV logic in API routes or frontend
+- No training logic in inference code
+- Dataset generation, detection, training, API, and web UI stay separated
+
+## Python Standards
+- Type hints everywhere
+- `pathlib` for all filesystem paths
+- Dataclasses for structured data (`DetectionResult`, configs)
+- Explicit error handling — never silently swallow exceptions
+- Small functions with one clear responsibility
+
+## Configuration Over Hard-Coding
+HSV thresholds, image dimensions, model paths, seeds, dataset size — all go in config files, not in source code.
+
+## Dataset & Model Artifacts
+- Do NOT commit generated datasets or trained model files to Git
+- Generator code + configs + small samples only
+- All training must be reproducible via a random seed
+
+## Testing
+Every feature needs tests before it is "done":
+1. Run relevant tests
+2. Confirm existing tests still pass
+3. Report what was tested
+
+## Git Commits
+Use conventional commits:
+```
+feat(hsv): implement LED state detection
+fix(api): reject invalid image uploads
+test(knn): add feature extractor unit tests
+docs(dataset): document metadata schema
+```
+
+## Definition of Done
+- Requested behavior works
+- Follows architecture
+- Tests exist and pass
+- Error cases handled
+- Docs updated if needed
+- No unrelated changes introduced
