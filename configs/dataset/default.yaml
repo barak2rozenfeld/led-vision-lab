@@ -34,15 +34,22 @@ led:
     - round
     - rectangular
     - square
+    - dome
+    - dome_side
+    - smd
   size_range: [0.08, 0.35]
   position_margin: 0.08
 
 backgrounds:
-  plain: 0.25
-  gradient: 0.15
-  pcb: 0.30
-  metal: 0.20
-  noisy: 0.10
+  plain: 0.10
+  gradient: 0.08
+  pcb: 0.18
+  blue_pcb: 0.10
+  realistic_pcb: 0.20
+  metal: 0.10
+  noisy: 0.07
+  white_studio: 0.10
+  aluminum_pcb: 0.07
 
 variation:
   blur_range: [0.0, 3.0]

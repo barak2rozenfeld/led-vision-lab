@@ -15,18 +15,24 @@ class LedConfig:
         "purple", "cyan", "magenta", "amber", "warm_white",
         "cool_white", "lime_green", "uv_violet",
     ])
-    shapes: list[str] = field(default_factory=lambda: ["round", "rectangular", "square"])
+    shapes: list[str] = field(default_factory=lambda: [
+        "round", "rectangular", "square", "dome", "dome_side", "smd",
+    ])
     size_range: tuple[float, float] = (0.08, 0.35)
     position_margin: float = 0.08
 
 
 @dataclass
 class BackgroundWeights:
-    plain: float = 0.25
-    gradient: float = 0.15
-    pcb: float = 0.30
-    metal: float = 0.20
-    noisy: float = 0.10
+    plain: float = 0.10
+    gradient: float = 0.08
+    pcb: float = 0.18
+    blue_pcb: float = 0.10
+    realistic_pcb: float = 0.20
+    metal: float = 0.10
+    noisy: float = 0.07
+    white_studio: float = 0.10
+    aluminum_pcb: float = 0.07
 
 
 @dataclass
@@ -108,11 +114,15 @@ def load_config(path: Path) -> DatasetConfig:
     if "backgrounds" in data:
         bg = data["backgrounds"]
         cfg.backgrounds = BackgroundWeights(
-            plain=float(bg.get("plain", 0.25)),
-            gradient=float(bg.get("gradient", 0.15)),
-            pcb=float(bg.get("pcb", 0.30)),
-            metal=float(bg.get("metal", 0.20)),
-            noisy=float(bg.get("noisy", 0.10)),
+            plain=float(bg.get("plain", 0.10)),
+            gradient=float(bg.get("gradient", 0.08)),
+            pcb=float(bg.get("pcb", 0.18)),
+            blue_pcb=float(bg.get("blue_pcb", 0.10)),
+            realistic_pcb=float(bg.get("realistic_pcb", 0.20)),
+            metal=float(bg.get("metal", 0.10)),
+            noisy=float(bg.get("noisy", 0.07)),
+            white_studio=float(bg.get("white_studio", 0.10)),
+            aluminum_pcb=float(bg.get("aluminum_pcb", 0.07)),
         )
 
     if "variation" in data:

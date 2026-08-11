@@ -132,8 +132,10 @@ class DatasetGenerator:
 
     def _sample_background_style(self) -> str:
         bg = self.config.backgrounds
-        styles = ["plain", "gradient", "pcb", "metal", "noisy"]
-        weights = [bg.plain, bg.gradient, bg.pcb, bg.metal, bg.noisy]
+        styles = ["plain", "gradient", "pcb", "blue_pcb", "realistic_pcb",
+                  "metal", "noisy", "white_studio", "aluminum_pcb"]
+        weights = [bg.plain, bg.gradient, bg.pcb, bg.blue_pcb, bg.realistic_pcb,
+                   bg.metal, bg.noisy, bg.white_studio, bg.aluminum_pcb]
         total = sum(weights)
         probs = [w / total for w in weights]
         return str(self.rng.choice(styles, p=probs))
@@ -159,8 +161,12 @@ class DatasetGenerator:
                 "plain": cfg.backgrounds.plain,
                 "gradient": cfg.backgrounds.gradient,
                 "pcb": cfg.backgrounds.pcb,
+                "blue_pcb": cfg.backgrounds.blue_pcb,
+                "realistic_pcb": cfg.backgrounds.realistic_pcb,
                 "metal": cfg.backgrounds.metal,
                 "noisy": cfg.backgrounds.noisy,
+                "white_studio": cfg.backgrounds.white_studio,
+                "aluminum_pcb": cfg.backgrounds.aluminum_pcb,
             },
             "variation": {
                 "blur_range": list(cfg.variation.blur_range),

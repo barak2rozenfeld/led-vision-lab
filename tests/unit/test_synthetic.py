@@ -9,7 +9,7 @@ import pytest
 from led_vision.synthetic.backgrounds import BackgroundGenerator, BACKGROUND_STYLES
 from led_vision.synthetic.config import DatasetConfig, SplitRatios, load_config
 from led_vision.synthetic.generator import DatasetGenerator, _apply_blur, _apply_noise, _apply_rotation
-from led_vision.synthetic.led import LEDRenderer, LED_COLORS_BGR
+from led_vision.synthetic.led import LEDRenderer, LED_COLORS_BGR, ALL_SHAPES
 
 
 # ---------------------------------------------------------------------------
@@ -22,8 +22,8 @@ class TestBackgroundGenerator:
 
     @pytest.mark.parametrize("style", BACKGROUND_STYLES)
     def test_output_shape_and_dtype(self, style: str) -> None:
-        image = self.bg.generate(style, 64)
-        assert image.shape == (64, 64, 3)
+        image = self.bg.generate(style, 128)
+        assert image.shape == (128, 128, 3)
         assert image.dtype == np.uint8
 
     @pytest.mark.parametrize("size", [32, 64, 128, 256])
@@ -62,23 +62,38 @@ class TestLEDRenderer:
         }
         assert set(LED_COLORS_BGR.keys()) == expected
 
-    @pytest.mark.parametrize("shape", ["round", "square", "rectangular"])
+    def test_all_shapes_registered(self) -> None:
+        assert set(ALL_SHAPES) == {"round", "square", "rectangular", "dome", "dome_side", "smd"}
+
+    @pytest.mark.parametrize("shape", ALL_SHAPES)
     @pytest.mark.parametrize("state", ["on", "off"])
     def test_render_shape_and_dtype(self, shape: str, state: str) -> None:
-        base = np.zeros((64, 64, 3), dtype=np.uint8)
+        base = np.full((128, 128, 3), 40, dtype=np.uint8)
         result = self.renderer.render(base, state, "red", shape, 0.2, 0.5, 0.5)
-        assert result.shape == (64, 64, 3)
+        assert result.shape == (128, 128, 3)
         assert result.dtype == np.uint8
 
-    def test_on_brighter_than_off(self) -> None:
+    @pytest.mark.parametrize("shape", ["round", "dome", "smd"])
+    def test_on_brighter_than_off(self, shape: str) -> None:
         base = np.full((128, 128, 3), 20, dtype=np.uint8)
-        on_img = LEDRenderer(np.random.default_rng(0)).render(base.copy(), "on", "red", "round", 0.3, 0.5, 0.5)
-        off_img = LEDRenderer(np.random.default_rng(0)).render(base.copy(), "off", "red", "round", 0.3, 0.5, 0.5)
+        on_img = LEDRenderer(np.random.default_rng(0)).render(base.copy(), "on", "red", shape, 0.25, 0.5, 0.5)
+        off_img = LEDRenderer(np.random.default_rng(0)).render(base.copy(), "off", "red", shape, 0.25, 0.5, 0.5)
         assert float(on_img.mean()) > float(off_img.mean())
 
     def test_led_changes_image(self) -> None:
-        base = np.zeros((64, 64, 3), dtype=np.uint8)
+        base = np.zeros((128, 128, 3), dtype=np.uint8)
         result = self.renderer.render(base, "on", "green", "round", 0.2, 0.5, 0.5)
+        assert result.sum() > 0
+
+    def test_dome_side_changes_image(self) -> None:
+        base = np.full((128, 128, 3), 245, dtype=np.uint8)
+        result = self.renderer.render(base, "on", "red", "dome_side", 0.18, 0.5, 0.4)
+        assert not np.array_equal(result, base)
+
+    def test_smd_off_package_visible(self) -> None:
+        base = np.zeros((128, 128, 3), dtype=np.uint8)
+        result = self.renderer.render(base, "off", "white", "smd", 0.2, 0.5, 0.5)
+        # SMD ceramic package should be visible even when OFF
         assert result.sum() > 0
 
     def test_unknown_color_raises(self) -> None:
