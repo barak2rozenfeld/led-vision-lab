@@ -1,4 +1,4 @@
-"""Dataset generation configuration — loaded from YAML or used with defaults."""
+"""Dataset generation configuration — v2 full parameter space."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,6 +6,21 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+# ---------------------------------------------------------------------------
+# Sub-configs
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SplitRatios:
+    train: float = 0.70
+    val: float = 0.15
+    test: float = 0.15
+
+    def __post_init__(self) -> None:
+        if abs(self.train + self.val + self.test - 1.0) > 1e-4:
+            raise ValueError(f"Split ratios must sum to 1.0")
 
 
 @dataclass
@@ -16,127 +31,267 @@ class LedConfig:
         "cool_white", "lime_green", "uv_violet",
     ])
     shapes: list[str] = field(default_factory=lambda: [
-        "round", "rectangular", "square", "dome", "dome_side", "smd",
+        "round", "square", "rectangular", "dome", "dome_side", "smd",
     ])
-    size_range: tuple[float, float] = (0.08, 0.35)
-    position_margin: float = 0.08
+    lens_types: list[str] = field(default_factory=lambda: ["clear", "diffused"])
+    brightness_range: tuple[float, float] = (0.05, 1.0)
+    size_range: tuple[float, float] = (0.04, 0.22)
+    position_margin: float = 0.05
+    glow_radius_range: tuple[float, float] = (0.6, 3.0)
+    halo_intensity_range: tuple[float, float] = (0.1, 1.0)
+
+
+@dataclass
+class MultiLedConfig:
+    single: float = 0.60
+    two: float = 0.18
+    four: float = 0.12
+    row: float = 0.07
+    grid: float = 0.03
+    mixed_states: bool = True
 
 
 @dataclass
 class BackgroundWeights:
-    plain: float = 0.10
-    gradient: float = 0.08
-    pcb: float = 0.18
-    blue_pcb: float = 0.10
-    realistic_pcb: float = 0.20
-    metal: float = 0.10
-    noisy: float = 0.07
-    white_studio: float = 0.10
-    aluminum_pcb: float = 0.07
+    black_plastic: float   = 0.09
+    gray_plastic: float    = 0.08
+    white_plastic: float   = 0.05
+    dark_enclosure: float  = 0.07
+    light_enclosure: float = 0.06
+    pcb: float             = 0.09
+    blue_pcb: float        = 0.05
+    realistic_pcb: float   = 0.09
+    metal: float           = 0.06
+    brushed_metal: float   = 0.05
+    white_studio: float    = 0.05
+    aluminum_pcb: float    = 0.05
+    textured: float        = 0.05
+    gradient: float        = 0.05
+    plain: float           = 0.06
 
 
 @dataclass
-class VariationConfig:
-    blur_range: tuple[float, float] = (0.0, 3.0)
-    noise_sigma_range: tuple[float, float] = (0.0, 15.0)
-    camera_angle_range: tuple[float, float] = (-10.0, 10.0)
-    ambient_factor_range: tuple[float, float] = (0.5, 1.5)
-    brightness_range: tuple[float, float] = (0.7, 1.3)
+class AmbientWeights:
+    dark_room: float      = 0.10
+    normal_indoor: float  = 0.35
+    bright_office: float  = 0.15
+    directional: float    = 0.15
+    low_light: float      = 0.10
+    warm: float           = 0.05
+    cool: float           = 0.05
+    backlight: float      = 0.05
 
 
 @dataclass
-class SplitRatios:
-    train: float = 0.70
-    val: float = 0.15
-    test: float = 0.15
+class GlareWeights:
+    none: float               = 0.50
+    small_highlight: float    = 0.20
+    strong_glare: float       = 0.10
+    reflection_near: float    = 0.10
+    reflection_overlap: float = 0.05
+    glossy: float             = 0.05
 
-    def __post_init__(self) -> None:
-        total = self.train + self.val + self.test
-        if abs(total - 1.0) > 1e-4:
-            raise ValueError(f"Split ratios must sum to 1.0, got {total:.4f}")
 
+@dataclass
+class OcclusionWeights:
+    none: float        = 0.75
+    cable: float       = 0.08
+    label: float       = 0.07
+    shadow: float      = 0.05
+    panel_edge: float  = 0.05
+
+
+@dataclass
+class FalsePositiveConfig:
+    enabled: bool = True
+    rate: float = 0.05
+    types: list[str] = field(default_factory=lambda: [
+        "colored_screw", "reflection_spot", "printed_circle",
+        "colored_button", "display_pixel", "specular_highlight",
+    ])
+
+
+@dataclass
+class CameraConfig:
+    noise_sigma_range: tuple[float, float]   = (0.0, 20.0)
+    blur_sigma_range: tuple[float, float]    = (0.0, 3.0)
+    motion_blur_prob: float                  = 0.10
+    motion_blur_length_range: tuple[int, int]= (3, 15)
+    chromatic_shift_range: tuple[float, float]= (0.0, 3.0)
+    gamma_range: tuple[float, float]         = (0.7, 1.5)
+    white_balance_shift: float               = 0.10
+    jpeg_artifact_prob: float                = 0.10
+    jpeg_quality_range: tuple[int, int]      = (60, 85)
+
+
+@dataclass
+class DifficultyWeights:
+    easy: float    = 0.25
+    medium: float  = 0.35
+    hard: float    = 0.25
+    extreme: float = 0.15
+
+
+@dataclass
+class GroupWeights:
+    clean_easy: float            = 0.20
+    lighting_variation: float    = 0.15
+    camera_variation: float      = 0.15
+    geometry_perspective: float  = 0.10
+    glare_reflections: float     = 0.10
+    blur_noise: float            = 0.10
+    difficult_on_off: float      = 0.10
+    false_positives: float       = 0.05
+    occlusion: float             = 0.05
+
+
+# ---------------------------------------------------------------------------
+# Root config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class DatasetConfig:
     seed: int = 42
     total: int = 100
+    master_size: int = 512
+    export_sizes: list[int] = field(default_factory=lambda: [64, 128, 224, 256])
     output_dir: Path = field(default_factory=lambda: Path("data/generated"))
-    sizes: list[int] = field(default_factory=lambda: [128])
     image_format: str = "jpg"
     image_quality: int = 95
-    split: SplitRatios = field(default_factory=SplitRatios)
-    on_ratio: float = 0.50
-    led: LedConfig = field(default_factory=LedConfig)
-    backgrounds: BackgroundWeights = field(default_factory=BackgroundWeights)
-    variation: VariationConfig = field(default_factory=VariationConfig)
 
+    # balanced | imbalanced_80_20 | imbalanced_95_5 | rare_fault
+    class_balance: str = "balanced"
+
+    split: SplitRatios       = field(default_factory=SplitRatios)
+    led: LedConfig           = field(default_factory=LedConfig)
+    multi_led: MultiLedConfig= field(default_factory=MultiLedConfig)
+    backgrounds: BackgroundWeights = field(default_factory=BackgroundWeights)
+    ambient: AmbientWeights  = field(default_factory=AmbientWeights)
+    glare: GlareWeights      = field(default_factory=GlareWeights)
+    occlusion: OcclusionWeights = field(default_factory=OcclusionWeights)
+    false_positive: FalsePositiveConfig = field(default_factory=FalsePositiveConfig)
+    camera: CameraConfig     = field(default_factory=CameraConfig)
+    difficulty: DifficultyWeights = field(default_factory=DifficultyWeights)
+    groups: GroupWeights     = field(default_factory=GroupWeights)
+
+
+# ---------------------------------------------------------------------------
+# YAML loader
+# ---------------------------------------------------------------------------
 
 def load_config(path: Path) -> DatasetConfig:
-    """Load a DatasetConfig from a YAML file."""
     with path.open(encoding="utf-8") as f:
-        data: dict[str, Any] = yaml.safe_load(f)
+        d: dict[str, Any] = yaml.safe_load(f)
 
     cfg = DatasetConfig()
 
-    if "seed" in data:
-        cfg.seed = int(data["seed"])
-    if "total" in data:
-        cfg.total = int(data["total"])
-    if "output_dir" in data:
-        cfg.output_dir = Path(data["output_dir"])
-    if "image_format" in data:
-        cfg.image_format = str(data["image_format"])
-    if "image_quality" in data:
-        cfg.image_quality = int(data["image_quality"])
-    if "on_ratio" in data:
-        cfg.on_ratio = float(data["on_ratio"])
-    if "sizes" in data:
-        cfg.sizes = [int(s) for s in data["sizes"]]
+    for key in ("seed", "total", "master_size", "image_format", "image_quality", "class_balance"):
+        if key in d:
+            setattr(cfg, key, d[key])
 
-    if "split" in data:
-        s = data["split"]
+    if "output_dir" in d:
+        cfg.output_dir = Path(d["output_dir"])
+    if "export_sizes" in d:
+        cfg.export_sizes = [int(s) for s in d["export_sizes"]]
+
+    if "split" in d:
+        s = d["split"]
         cfg.split = SplitRatios(
             train=float(s.get("train", 0.70)),
             val=float(s.get("val", 0.15)),
             test=float(s.get("test", 0.15)),
         )
 
-    if "led" in data:
-        led = data["led"]
-        size_range = led.get("size_range", list(cfg.led.size_range))
+    if "led" in d:
+        v = d["led"]
         cfg.led = LedConfig(
-            colors=led.get("colors", cfg.led.colors),
-            shapes=led.get("shapes", cfg.led.shapes),
-            size_range=(float(size_range[0]), float(size_range[1])),
-            position_margin=float(led.get("position_margin", cfg.led.position_margin)),
+            colors=v.get("colors", cfg.led.colors),
+            shapes=v.get("shapes", cfg.led.shapes),
+            lens_types=v.get("lens_types", cfg.led.lens_types),
+            brightness_range=_pair(v.get("brightness_range", cfg.led.brightness_range)),
+            size_range=_pair(v.get("size_range", cfg.led.size_range)),
+            position_margin=float(v.get("position_margin", cfg.led.position_margin)),
+            glow_radius_range=_pair(v.get("glow_radius_range", cfg.led.glow_radius_range)),
+            halo_intensity_range=_pair(v.get("halo_intensity_range", cfg.led.halo_intensity_range)),
         )
 
-    if "backgrounds" in data:
-        bg = data["backgrounds"]
-        cfg.backgrounds = BackgroundWeights(
-            plain=float(bg.get("plain", 0.10)),
-            gradient=float(bg.get("gradient", 0.08)),
-            pcb=float(bg.get("pcb", 0.18)),
-            blue_pcb=float(bg.get("blue_pcb", 0.10)),
-            realistic_pcb=float(bg.get("realistic_pcb", 0.20)),
-            metal=float(bg.get("metal", 0.10)),
-            noisy=float(bg.get("noisy", 0.07)),
-            white_studio=float(bg.get("white_studio", 0.10)),
-            aluminum_pcb=float(bg.get("aluminum_pcb", 0.07)),
+    if "multi_led" in d:
+        v = d["multi_led"]
+        cfg.multi_led = MultiLedConfig(
+            single=float(v.get("single", 0.60)),
+            two=float(v.get("two", 0.18)),
+            four=float(v.get("four", 0.12)),
+            row=float(v.get("row", 0.07)),
+            grid=float(v.get("grid", 0.03)),
+            mixed_states=bool(v.get("mixed_states", True)),
         )
 
-    if "variation" in data:
-        v = data["variation"]
-        cfg.variation = VariationConfig(
-            blur_range=_pair(v.get("blur_range", list(cfg.variation.blur_range))),
-            noise_sigma_range=_pair(v.get("noise_sigma_range", list(cfg.variation.noise_sigma_range))),
-            camera_angle_range=_pair(v.get("camera_angle_range", list(cfg.variation.camera_angle_range))),
-            ambient_factor_range=_pair(v.get("ambient_factor_range", list(cfg.variation.ambient_factor_range))),
-            brightness_range=_pair(v.get("brightness_range", list(cfg.variation.brightness_range))),
+    if "backgrounds" in d:
+        v = d["backgrounds"]
+        cfg.backgrounds = BackgroundWeights(**{
+            k: float(v.get(k, getattr(cfg.backgrounds, k)))
+            for k in BackgroundWeights.__dataclass_fields__
+        })
+
+    if "ambient" in d:
+        v = d["ambient"]
+        cfg.ambient = AmbientWeights(**{
+            k: float(v.get(k, getattr(cfg.ambient, k)))
+            for k in AmbientWeights.__dataclass_fields__
+        })
+
+    if "glare" in d:
+        v = d["glare"]
+        cfg.glare = GlareWeights(**{
+            k: float(v.get(k, getattr(cfg.glare, k)))
+            for k in GlareWeights.__dataclass_fields__
+        })
+
+    if "occlusion" in d:
+        v = d["occlusion"]
+        cfg.occlusion = OcclusionWeights(**{
+            k: float(v.get(k, getattr(cfg.occlusion, k)))
+            for k in OcclusionWeights.__dataclass_fields__
+        })
+
+    if "false_positive" in d:
+        v = d["false_positive"]
+        cfg.false_positive = FalsePositiveConfig(
+            enabled=bool(v.get("enabled", True)),
+            rate=float(v.get("rate", 0.05)),
+            types=v.get("types", cfg.false_positive.types),
         )
+
+    if "camera" in d:
+        v = d["camera"]
+        cfg.camera = CameraConfig(
+            noise_sigma_range=_pair(v.get("noise_sigma_range", cfg.camera.noise_sigma_range)),
+            blur_sigma_range=_pair(v.get("blur_sigma_range", cfg.camera.blur_sigma_range)),
+            motion_blur_prob=float(v.get("motion_blur_prob", cfg.camera.motion_blur_prob)),
+            motion_blur_length_range=tuple(v.get("motion_blur_length_range", list(cfg.camera.motion_blur_length_range))),
+            chromatic_shift_range=_pair(v.get("chromatic_shift_range", cfg.camera.chromatic_shift_range)),
+            gamma_range=_pair(v.get("gamma_range", cfg.camera.gamma_range)),
+            white_balance_shift=float(v.get("white_balance_shift", cfg.camera.white_balance_shift)),
+            jpeg_artifact_prob=float(v.get("jpeg_artifact_prob", cfg.camera.jpeg_artifact_prob)),
+            jpeg_quality_range=tuple(v.get("jpeg_quality_range", list(cfg.camera.jpeg_quality_range))),
+        )
+
+    if "difficulty" in d:
+        v = d["difficulty"]
+        cfg.difficulty = DifficultyWeights(**{
+            k: float(v.get(k, getattr(cfg.difficulty, k)))
+            for k in DifficultyWeights.__dataclass_fields__
+        })
+
+    if "groups" in d:
+        v = d["groups"]
+        cfg.groups = GroupWeights(**{
+            k: float(v.get(k, getattr(cfg.groups, k)))
+            for k in GroupWeights.__dataclass_fields__
+        })
 
     return cfg
 
 
-def _pair(value: list[float]) -> tuple[float, float]:
+def _pair(value: Any) -> tuple[float, float]:
     return (float(value[0]), float(value[1]))

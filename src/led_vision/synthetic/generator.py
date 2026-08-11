@@ -1,213 +1,335 @@
-"""Synthetic LED dataset generator."""
+"""DatasetGenerator v2 — master→downsample, 30-field metadata, group quotas."""
 from __future__ import annotations
 
 import csv
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 from tqdm import tqdm
 
-from led_vision.synthetic.backgrounds import BackgroundGenerator
-from led_vision.synthetic.config import DatasetConfig
-from led_vision.synthetic.led import LEDRenderer
+from .config import DatasetConfig, load_config
+from .scene import SceneBuilder, SceneResult, _dataclass_weights, _weighted_choice
+
+
+# Metadata CSV columns (order matters)
+_CSV_COLUMNS = [
+    "id",
+    "group",
+    "split",
+    "size",
+    "state",
+    "difficulty",
+    "false_positive",
+    "false_positive_type",
+    "led_count",
+    # Primary LED fields (first LED, or FP object)
+    "led_state",
+    "led_color",
+    "led_shape",
+    "led_lens_type",
+    "led_brightness",
+    "led_size_pct",
+    "led_pos_x",
+    "led_pos_y",
+    "led_glow_radius",
+    "led_halo_intensity",
+    "led_cx_master",
+    "led_cy_master",
+    "led_radius_master",
+    # Scene parameters
+    "background",
+    "ambient_type",
+    "ambient_factor",
+    "view_angle",
+    "glare_type",
+    "occlusion_type",
+    # Camera effects
+    "blur_sigma",
+    "noise_sigma",
+    "motion_blur",
+    "motion_blur_angle",
+    "motion_blur_length",
+    "chromatic_shift",
+    "gamma",
+    "white_balance_shift",
+    "jpeg_quality",
+    # Provenance
+    "master_size",
+    "seed",
+    "filepath",
+]
 
 
 class DatasetGenerator:
-    """Generates a synthetic LED ON/OFF image dataset from a DatasetConfig."""
-
     def __init__(self, config: DatasetConfig) -> None:
-        self.config = config
-        self.rng = np.random.default_rng(config.seed)
-        self.bg_gen = BackgroundGenerator(self.rng)
-        self.led_renderer = LEDRenderer(self.rng)
+        self._cfg = config
+        self._rng = np.random.default_rng(config.seed)
+
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
 
     def generate(self) -> Path:
-        """
-        Run generation for all configured sizes.
+        """Generate the full dataset. Returns path to metadata CSV."""
+        cfg = self._cfg
+        out_dir = Path(cfg.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        Returns the output directory path.
-        """
-        cfg = self.config
-        cfg.output_dir.mkdir(parents=True, exist_ok=True)
+        # Build split assignments
+        assignments = self._build_assignments()
 
-        assignments = self._make_assignments()
-        self._save_config_json(cfg.output_dir)
+        meta_path = out_dir / "metadata.csv"
+        start = time.time()
 
-        all_rows: list[dict] = []
+        builder = SceneBuilder(cfg, self._rng)
 
-        for size in cfg.sizes:
-            print(f"\n[{size}×{size}] Generating {cfg.total} images …")
-            self._create_split_dirs(cfg.output_dir / str(size))
+        with meta_path.open("w", newline="", encoding="utf-8") as csv_f:
+            writer = csv.DictWriter(csv_f, fieldnames=_CSV_COLUMNS)
+            writer.writeheader()
 
-            for idx, (split, state) in enumerate(tqdm(assignments, desc=f"  {size}px")):
-                row = self._generate_one(idx, size, split, state)
-                all_rows.append(row)
+            for idx, (split, state, difficulty, group) in enumerate(
+                tqdm(assignments, desc="Generating scenes", unit="scene")
+            ):
+                scene_seed = int(self._rng.integers(0, 2**31))
+                scene_rng = np.random.default_rng(scene_seed)
+                local_builder = SceneBuilder(cfg, scene_rng)
 
-        metadata_path = cfg.output_dir / "metadata.csv"
-        _save_csv(all_rows, metadata_path)
+                scene: SceneResult = local_builder.build(
+                    target_state=state,
+                    difficulty=difficulty,
+                    group=group,
+                    scene_seed=scene_seed,
+                )
 
-        total = len(all_rows)
-        print(f"\nDone — {total} image(s) saved to '{cfg.output_dir}'")
-        print(f"Metadata : {metadata_path}")
-        print(f"Config   : {cfg.output_dir / 'dataset_config.json'}")
-        return cfg.output_dir
+                scene_id = f"led_{idx:08d}"
+                rows = self._save_scene(scene, scene_id, split, out_dir)
+                for row in rows:
+                    writer.writerow(row)
+
+        elapsed = time.time() - start
+        total_files = cfg.total * len(cfg.export_sizes)
+        print(
+            f"\nDone — {cfg.total} scenes × {len(cfg.export_sizes)} sizes "
+            f"= {total_files} images in {elapsed:.1f}s"
+        )
+        print(f"Metadata: {meta_path}")
+
+        self._save_config_json(out_dir)
+        return meta_path
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Assignment builder
     # ------------------------------------------------------------------
 
-    def _generate_one(self, idx: int, size: int, split: str, state: str) -> dict:
-        cfg = self.config
-
-        color_name = str(self.rng.choice(cfg.led.colors))
-        shape = str(self.rng.choice(cfg.led.shapes))
-        led_size_pct = float(self.rng.uniform(*cfg.led.size_range))
-
-        margin = cfg.led.position_margin
-        pos_x = float(self.rng.uniform(margin, 1.0 - margin))
-        pos_y = float(self.rng.uniform(margin, 1.0 - margin))
-
-        bg_style = self._sample_background_style()
-        blur_px = float(self.rng.uniform(*cfg.variation.blur_range))
-        noise_sigma = float(self.rng.uniform(*cfg.variation.noise_sigma_range))
-        camera_angle = float(self.rng.uniform(*cfg.variation.camera_angle_range))
-        ambient_factor = float(self.rng.uniform(*cfg.variation.ambient_factor_range))
-
-        # Build image
-        image = self.bg_gen.generate(bg_style, size)
-        image = _apply_ambient(image, ambient_factor)
-        image = self.led_renderer.render(image, state, color_name, shape, led_size_pct, pos_x, pos_y)
-        if blur_px > 0.3:
-            image = _apply_blur(image, blur_px)
-        if noise_sigma > 0.3:
-            image = _apply_noise(image, noise_sigma, self.rng)
-        if abs(camera_angle) > 0.3:
-            image = _apply_rotation(image, camera_angle)
-
-        # Save
-        image_id = f"{idx:08d}"
-        filename = f"{image_id}_{state}.jpg"
-        out_path = cfg.output_dir / str(size) / split / state / filename
-        cv2.imwrite(str(out_path), image, [cv2.IMWRITE_JPEG_QUALITY, cfg.image_quality])
-
-        return {
-            "id": image_id,
-            "split": split,
-            "state": state,
-            "size": size,
-            "led_color": color_name,
-            "led_shape": shape,
-            "led_size_pct": round(led_size_pct, 4),
-            "pos_x": round(pos_x, 4),
-            "pos_y": round(pos_y, 4),
-            "background_style": bg_style,
-            "blur_px": round(blur_px, 3),
-            "noise_sigma": round(noise_sigma, 3),
-            "camera_angle_deg": round(camera_angle, 3),
-            "ambient_factor": round(ambient_factor, 3),
-            "seed": cfg.seed,
-            "filepath": str((Path(str(size)) / split / state / filename)),
-        }
-
-    def _make_assignments(self) -> list[tuple[str, str]]:
-        """Assign each sample a (split, state) pair, shuffled reproducibly."""
-        cfg = self.config
+    def _build_assignments(self) -> list[tuple[str, str, str, str]]:
+        """Return list of (split, state, difficulty, group) for each scene."""
+        cfg = self._cfg
         n = cfg.total
 
-        n_on = int(n * cfg.on_ratio)
-        n_off = n - n_on
-        states = ["on"] * n_on + ["off"] * n_off
-        self.rng.shuffle(states)
-
+        # Split indices
         n_train = int(n * cfg.split.train)
         n_val = int(n * cfg.split.val)
-        n_test = n - n_train - n_val
-        splits = ["train"] * n_train + ["val"] * n_val + ["test"] * n_test
-        self.rng.shuffle(splits)
+        splits = (
+            ["train"] * n_train
+            + ["val"] * n_val
+            + ["test"] * (n - n_train - n_val)
+        )
 
-        return list(zip(splits, states))
+        # Class balance
+        on_ratio = self._on_ratio()
+        n_on = int(n * on_ratio)
+        states = ["on"] * n_on + ["off"] * (n - n_on)
 
-    def _sample_background_style(self) -> str:
-        bg = self.config.backgrounds
-        styles = ["plain", "gradient", "pcb", "blue_pcb", "realistic_pcb",
-                  "metal", "noisy", "white_studio", "aluminum_pcb"]
-        weights = [bg.plain, bg.gradient, bg.pcb, bg.blue_pcb, bg.realistic_pcb,
-                   bg.metal, bg.noisy, bg.white_studio, bg.aluminum_pcb]
-        total = sum(weights)
-        probs = [w / total for w in weights]
-        return str(self.rng.choice(styles, p=probs))
+        # Difficulty distribution
+        diff_weights = _dataclass_weights(cfg.difficulty)
+        difficulties = _sample_categorical(self._rng, diff_weights, n)
 
-    def _create_split_dirs(self, base: Path) -> None:
-        for split in ("train", "val", "test"):
-            for state in ("on", "off"):
-                (base / split / state).mkdir(parents=True, exist_ok=True)
+        # Group distribution
+        group_weights = _dataclass_weights(cfg.groups)
+        groups = _sample_categorical(self._rng, group_weights, n)
 
-    def _save_config_json(self, output_dir: Path) -> None:
-        cfg = self.config
-        payload = {
+        self._rng.shuffle(splits)
+        self._rng.shuffle(states)
+
+        return list(zip(splits, states, difficulties, groups))
+
+    def _on_ratio(self) -> float:
+        balance = self._cfg.class_balance
+        if balance == "balanced":
+            return 0.50
+        if balance == "imbalanced_80_20":
+            return 0.80
+        if balance == "imbalanced_95_5":
+            return 0.95
+        if balance == "rare_fault":
+            return 0.05  # mostly OFF, ON is the rare "fault"
+        return 0.50
+
+    # ------------------------------------------------------------------
+    # Scene save
+    # ------------------------------------------------------------------
+
+    def _save_scene(
+        self,
+        scene: SceneResult,
+        scene_id: str,
+        split: str,
+        out_dir: Path,
+    ) -> list[dict[str, Any]]:
+        """Save master image at each export size and return one CSV row per size."""
+        rows: list[dict[str, Any]] = []
+        base_row = self._build_base_row(scene, scene_id, split)
+
+        for size in self._cfg.export_sizes:
+            img = self._resize(scene.image, size)
+            rel_path = self._save_image(img, scene_id, split, scene.state, size, out_dir)
+            row = {**base_row, "size": size, "filepath": rel_path}
+            rows.append(row)
+
+        return rows
+
+    @staticmethod
+    def _resize(image: np.ndarray, target: int) -> np.ndarray:
+        h, w = image.shape[:2]
+        if h == target and w == target:
+            return image
+        interp = cv2.INTER_AREA if target < h else cv2.INTER_LINEAR
+        return cv2.resize(image, (target, target), interpolation=interp)
+
+    def _save_image(
+        self,
+        image: np.ndarray,
+        scene_id: str,
+        split: str,
+        state: str,
+        size: int,
+        out_dir: Path,
+    ) -> str:
+        folder = out_dir / str(size) / split / state
+        folder.mkdir(parents=True, exist_ok=True)
+        fname = f"{scene_id}.{self._cfg.image_format}"
+        fpath = folder / fname
+        ext = self._cfg.image_format.lower()
+        if ext in ("jpg", "jpeg"):
+            cv2.imwrite(str(fpath), image, [cv2.IMWRITE_JPEG_QUALITY, self._cfg.image_quality])
+        else:
+            cv2.imwrite(str(fpath), image)
+        return str(fpath.relative_to(out_dir))
+
+    # ------------------------------------------------------------------
+    # Row builder
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_base_row(scene: SceneResult, scene_id: str, split: str) -> dict[str, Any]:
+        primary = scene.leds[0] if scene.leds else {}
+        return {
+            "id": scene_id,
+            "group": scene.group,
+            "split": split,
+            "size": None,          # filled per export size
+            "state": scene.state,
+            "difficulty": scene.difficulty,
+            "false_positive": scene.is_false_positive,
+            "false_positive_type": scene.fp_type,
+            "led_count": scene.led_count,
+            # Primary LED
+            "led_state": primary.get("state", ""),
+            "led_color": primary.get("color", ""),
+            "led_shape": primary.get("shape", ""),
+            "led_lens_type": primary.get("lens_type", ""),
+            "led_brightness": primary.get("brightness", ""),
+            "led_size_pct": primary.get("size_pct", ""),
+            "led_pos_x": primary.get("pos_x", ""),
+            "led_pos_y": primary.get("pos_y", ""),
+            "led_glow_radius": primary.get("glow_radius", ""),
+            "led_halo_intensity": primary.get("halo_intensity", ""),
+            "led_cx_master": primary.get("cx_master", ""),
+            "led_cy_master": primary.get("cy_master", ""),
+            "led_radius_master": primary.get("radius_master", ""),
+            # Scene
+            "background": scene.background,
+            "ambient_type": scene.ambient_type,
+            "ambient_factor": scene.ambient_factor,
+            "view_angle": scene.view_angle,
+            "glare_type": scene.glare_type,
+            "occlusion_type": scene.occlusion_type,
+            # Camera
+            "blur_sigma": scene.blur_sigma,
+            "noise_sigma": scene.noise_sigma,
+            "motion_blur": scene.motion_blur,
+            "motion_blur_angle": scene.motion_blur_angle,
+            "motion_blur_length": scene.motion_blur_length,
+            "chromatic_shift": scene.chromatic_shift,
+            "gamma": scene.gamma,
+            "white_balance_shift": scene.white_balance_shift,
+            "jpeg_quality": scene.jpeg_quality,
+            # Provenance
+            "master_size": scene.image.shape[0],
+            "seed": scene.seed,
+            "filepath": None,  # filled per export size
+        }
+
+    # ------------------------------------------------------------------
+    # Config snapshot
+    # ------------------------------------------------------------------
+
+    def _save_config_json(self, out_dir: Path) -> None:
+        cfg = self._cfg
+        snapshot: dict[str, Any] = {
             "seed": cfg.seed,
             "total": cfg.total,
-            "sizes": cfg.sizes,
-            "on_ratio": cfg.on_ratio,
-            "split": {"train": cfg.split.train, "val": cfg.split.val, "test": cfg.split.test},
-            "led_colors": cfg.led.colors,
-            "led_shapes": cfg.led.shapes,
-            "led_size_range": list(cfg.led.size_range),
-            "position_margin": cfg.led.position_margin,
-            "backgrounds": {
-                "plain": cfg.backgrounds.plain,
-                "gradient": cfg.backgrounds.gradient,
-                "pcb": cfg.backgrounds.pcb,
-                "blue_pcb": cfg.backgrounds.blue_pcb,
-                "realistic_pcb": cfg.backgrounds.realistic_pcb,
-                "metal": cfg.backgrounds.metal,
-                "noisy": cfg.backgrounds.noisy,
-                "white_studio": cfg.backgrounds.white_studio,
-                "aluminum_pcb": cfg.backgrounds.aluminum_pcb,
+            "master_size": cfg.master_size,
+            "export_sizes": cfg.export_sizes,
+            "class_balance": cfg.class_balance,
+            "image_format": cfg.image_format,
+            "image_quality": cfg.image_quality,
+            "split": {
+                "train": cfg.split.train,
+                "val": cfg.split.val,
+                "test": cfg.split.test,
             },
-            "variation": {
-                "blur_range": list(cfg.variation.blur_range),
-                "noise_sigma_range": list(cfg.variation.noise_sigma_range),
-                "camera_angle_range": list(cfg.variation.camera_angle_range),
-                "ambient_factor_range": list(cfg.variation.ambient_factor_range),
-                "brightness_range": list(cfg.variation.brightness_range),
+            "backgrounds": _dataclass_weights(cfg.backgrounds),
+            "ambient": _dataclass_weights(cfg.ambient),
+            "glare": _dataclass_weights(cfg.glare),
+            "occlusion": _dataclass_weights(cfg.occlusion),
+            "difficulty": _dataclass_weights(cfg.difficulty),
+            "groups": _dataclass_weights(cfg.groups),
+            "led": {
+                "colors": cfg.led.colors,
+                "shapes": cfg.led.shapes,
+                "lens_types": cfg.led.lens_types,
+                "brightness_range": list(cfg.led.brightness_range),
+                "size_range": list(cfg.led.size_range),
+                "position_margin": cfg.led.position_margin,
+                "glow_radius_range": list(cfg.led.glow_radius_range),
+                "halo_intensity_range": list(cfg.led.halo_intensity_range),
             },
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "false_positive": {
+                "enabled": cfg.false_positive.enabled,
+                "rate": cfg.false_positive.rate,
+                "types": cfg.false_positive.types,
+            },
         }
-        (output_dir / "dataset_config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        path = out_dir / "dataset_config.json"
+        path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
 
 
-# ------------------------------------------------------------------
-# Image augmentation utilities
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def _apply_ambient(image: np.ndarray, factor: float) -> np.ndarray:
-    return np.clip(image.astype(np.float32) * factor, 0, 255).astype(np.uint8)
-
-
-def _apply_blur(image: np.ndarray, sigma: float) -> np.ndarray:
-    ksize = int(sigma * 4) | 1
-    return cv2.GaussianBlur(image, (ksize, ksize), sigma)
-
-
-def _apply_noise(image: np.ndarray, sigma: float, rng: np.random.Generator) -> np.ndarray:
-    noise = rng.normal(0.0, sigma, image.shape).astype(np.float32)
-    return np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-
-
-def _apply_rotation(image: np.ndarray, angle_deg: float) -> np.ndarray:
-    h, w = image.shape[:2]
-    M = cv2.getRotationMatrix2D((w / 2, h / 2), angle_deg, 1.0)
-    return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-
-
-def _save_csv(rows: list[dict], path: Path) -> None:
-    if not rows:
-        return
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+def _sample_categorical(
+    rng: np.random.Generator,
+    weights: dict[str, float],
+    n: int,
+) -> list[str]:
+    names = list(weights.keys())
+    probs = np.array(list(weights.values()), dtype=np.float64)
+    probs /= probs.sum()
+    indices = rng.choice(len(names), size=n, p=probs)
+    return [names[i] for i in indices]

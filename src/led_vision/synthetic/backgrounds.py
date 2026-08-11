@@ -1,379 +1,348 @@
-"""Procedural background generators for synthetic LED images."""
+"""Procedural background generators — v2 (15 styles)."""
 from __future__ import annotations
 
 import numpy as np
 import cv2
 
-# PCB colors (BGR)
-_PCB_BASE     = (25,  80,  20)
-_PCB_COPPER   = (30,  110, 185)
-_PCB_SILK     = (220, 225, 220)
-_PCB_HOLE     = (8,   15,  8)
-_BLUE_PCB_BASE = (90, 55, 25)   # blue PCB board color
-_ALU_BASE     = (215, 215, 210)  # aluminum substrate
-
 BACKGROUND_STYLES = (
-    "plain", "gradient", "pcb", "blue_pcb", "realistic_pcb",
-    "metal", "noisy", "white_studio", "aluminum_pcb",
+    "black_plastic", "gray_plastic", "white_plastic",
+    "dark_enclosure", "light_enclosure",
+    "pcb", "blue_pcb", "realistic_pcb",
+    "metal", "brushed_metal", "aluminum_pcb",
+    "white_studio", "textured", "gradient", "plain",
 )
 
 
 class BackgroundGenerator:
-    """Generates synthetic background images in various styles."""
-
     def __init__(self, rng: np.random.Generator) -> None:
-        self.rng = rng
+        self._rng = rng
 
     def generate(self, style: str, size: int) -> np.ndarray:
-        """Return a (size, size, 3) uint8 BGR image for the given style."""
-        generators = {
-            "plain":        self._plain,
-            "gradient":     self._gradient,
-            "pcb":          self._pcb,
-            "blue_pcb":     self._blue_pcb,
-            "realistic_pcb":self._realistic_pcb,
-            "metal":        self._metal,
-            "noisy":        self._noisy,
-            "white_studio": self._white_studio,
-            "aluminum_pcb": self._aluminum_pcb,
-        }
-        if style not in generators:
-            raise ValueError(
-                f"Unknown background style: {style!r}. Choose from {BACKGROUND_STYLES}"
-            )
-        return generators[style](size)
+        if style not in BACKGROUND_STYLES:
+            raise ValueError(f"Unknown background style {style!r}. Choose from {BACKGROUND_STYLES}")
+        method = getattr(self, f"_{style}")
+        return method(size)
 
     # ------------------------------------------------------------------
-    # Plain
+    # Plastic / enclosure styles
     # ------------------------------------------------------------------
 
-    def _plain(self, size: int) -> np.ndarray:
-        mode = self.rng.choice(["dark", "mid", "light"])
-        if mode == "dark":
-            base = int(self.rng.integers(5, 55))
-        elif mode == "mid":
-            base = int(self.rng.integers(80, 160))
-        else:
-            base = int(self.rng.integers(180, 240))
-        tint = self.rng.integers(-18, 19, size=3)
-        color = np.clip([base + tint[0], base + tint[1], base + tint[2]], 0, 255).astype(np.uint8)
-        return np.full((size, size, 3), color, dtype=np.uint8)
+    def _black_plastic(self, size: int) -> np.ndarray:
+        base_v = int(self._rng.integers(10, 35))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        # Subtle glossy highlight near top-left
+        hl_cx = int(size * self._rng.uniform(0.05, 0.35))
+        hl_cy = int(size * self._rng.uniform(0.05, 0.35))
+        hl_r = int(size * self._rng.uniform(0.08, 0.20))
+        glow = np.zeros((size, size), dtype=np.float32)
+        cv2.circle(glow, (hl_cx, hl_cy), hl_r, 1.0, -1)
+        k = max(3, (hl_r | 1))
+        glow = cv2.GaussianBlur(glow, (k, k), hl_r * 0.4)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + glow * self._rng.uniform(20, 50), 0, 255)
+        return img.astype(np.uint8)
+
+    def _gray_plastic(self, size: int) -> np.ndarray:
+        base_v = int(self._rng.integers(80, 145))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        # Matte texture: medium noise
+        noise = self._rng.normal(0, 6, (size, size)).astype(np.float32)
+        # Slightly warmer or cooler plastic tint
+        tint = self._rng.choice(["warm", "cool", "neutral"])
+        for ch in range(3):
+            shift = {"warm": [0, 0, 4], "cool": [4, 0, 0], "neutral": [0, 0, 0]}[tint][ch]
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise + shift, 0, 255)
+        # Faint surface imperfections
+        n_scratches = int(self._rng.integers(2, 8))
+        for _ in range(n_scratches):
+            x1 = int(self._rng.integers(0, size))
+            y1 = int(self._rng.integers(0, size))
+            x2 = int(self._rng.integers(0, size))
+            y2 = int(self._rng.integers(0, size))
+            scratch_v = int(self._rng.integers(base_v - 20, base_v + 20))
+            cv2.line(img.astype(np.uint8), (x1, y1), (x2, y2), (scratch_v,) * 3, 1)
+        return np.clip(img, 0, 255).astype(np.uint8)
+
+    def _white_plastic(self, size: int) -> np.ndarray:
+        base_v = int(self._rng.integers(210, 245))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        noise = self._rng.normal(0, 4, (size, size)).astype(np.float32)
+        # Slight yellowing variation
+        yellowing = self._rng.uniform(0, 8)
+        for ch in range(3):
+            yellow_shift = [0, 0, yellowing][ch]
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise + yellow_shift, 0, 255)
+        return img.astype(np.uint8)
+
+    def _dark_enclosure(self, size: int) -> np.ndarray:
+        # Very dark blue-black plastic electronics box
+        b_base = int(self._rng.integers(5, 22))
+        g_base = int(self._rng.integers(5, 20))
+        r_base = int(self._rng.integers(3, 18))
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        img[:, :, 0] = b_base
+        img[:, :, 1] = g_base
+        img[:, :, 2] = r_base
+        noise = self._rng.normal(0, 2.5, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        # Venting slot pattern
+        n_slots = int(self._rng.integers(3, 9))
+        for i in range(n_slots):
+            y = int((i + 0.5) * size / n_slots)
+            slot_v = min(255, b_base + int(self._rng.integers(3, 12)))
+            cv2.line(img.astype(np.uint8), (10, y), (size - 10, y), (slot_v,) * 3, 1)
+        return np.clip(img, 0, 255).astype(np.uint8)
+
+    def _light_enclosure(self, size: int) -> np.ndarray:
+        # Light beige/gray electronics enclosure
+        base_b = int(self._rng.integers(155, 195))
+        base_g = int(self._rng.integers(155, 195))
+        base_r = int(self._rng.integers(150, 190))
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        img[:, :, 0] = base_b
+        img[:, :, 1] = base_g
+        img[:, :, 2] = base_r
+        noise = self._rng.normal(0, 5, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        # Subtle panel lines
+        if self._rng.random() > 0.5:
+            line_v = max(0, base_b - 20)
+            midline = size // 2
+            cv2.line(img.astype(np.uint8), (0, midline), (size, midline), (line_v,) * 3, 1)
+        return np.clip(img, 0, 255).astype(np.uint8)
 
     # ------------------------------------------------------------------
-    # Gradient
-    # ------------------------------------------------------------------
-
-    def _gradient(self, size: int) -> np.ndarray:
-        c1 = self.rng.integers(10, 200, size=3).astype(np.float32)
-        c2 = self.rng.integers(10, 200, size=3).astype(np.float32)
-        direction = self.rng.choice(["horizontal", "vertical", "diagonal"])
-        if direction == "horizontal":
-            t = np.linspace(0, 1, size, dtype=np.float32)[np.newaxis, :, np.newaxis]
-        elif direction == "vertical":
-            t = np.linspace(0, 1, size, dtype=np.float32)[:, np.newaxis, np.newaxis]
-        else:
-            tx = np.linspace(0, 1, size, dtype=np.float32)
-            ty = np.linspace(0, 1, size, dtype=np.float32)
-            t = ((tx[np.newaxis, :] + ty[:, np.newaxis]) / 2)[:, :, np.newaxis]
-        image = np.broadcast_to((1 - t) * c1 + t * c2, (size, size, 3)).copy()
-        return np.clip(image, 0, 255).astype(np.uint8)
-
-    # ------------------------------------------------------------------
-    # PCB (green, basic)
+    # PCB styles
     # ------------------------------------------------------------------
 
     def _pcb(self, size: int) -> np.ndarray:
-        return self._draw_pcb_board(size, _PCB_BASE)
-
-    # ------------------------------------------------------------------
-    # Blue PCB (hobby/Arduino style)
-    # ------------------------------------------------------------------
+        base_g = int(self._rng.integers(20, 55))
+        base_b = int(self._rng.integers(15, 40))
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        img[:, :, 0] = base_b
+        img[:, :, 1] = base_g
+        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        self._add_pcb_traces(img, size, trace_color=(0, int(self._rng.integers(60, 100)), 0))
+        return np.clip(img, 0, 255).astype(np.uint8)
 
     def _blue_pcb(self, size: int) -> np.ndarray:
-        return self._draw_pcb_board(size, _BLUE_PCB_BASE)
-
-    # ------------------------------------------------------------------
-    # Shared PCB board drawing logic
-    # ------------------------------------------------------------------
-
-    def _draw_pcb_board(self, size: int, base_color: tuple) -> np.ndarray:
-        image = np.full((size, size, 3), base_color, dtype=np.uint8)
-
-        # Subtle surface noise
-        noise = self.rng.integers(-8, 9, (size, size, 3), dtype=np.int16)
-        image = np.clip(image.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-
-        # Copper traces
-        n_traces = int(self.rng.integers(4, 20))
-        for _ in range(n_traces):
-            horizontal = bool(self.rng.random() > 0.5)
-            thickness = max(1, int(size * self.rng.uniform(0.003, 0.015)))
-            jitter = self.rng.integers(-20, 21, size=3)
-            color = tuple(int(np.clip(_PCB_COPPER[i] + jitter[i], 0, 255)) for i in range(3))
-            if horizontal:
-                y = int(self.rng.integers(0, size))
-                cv2.line(image, (0, y), (size, y), color, thickness)
-            else:
-                x = int(self.rng.integers(0, size))
-                cv2.line(image, (x, 0), (x, size), color, thickness)
-
-        # Solder pads + through-holes
-        n_pads = int(self.rng.integers(2, 14))
-        for _ in range(n_pads):
-            cx = int(self.rng.integers(0, size))
-            cy = int(self.rng.integers(0, size))
-            pad_r = max(2, int(size * self.rng.uniform(0.01, 0.04)))
-            jitter = self.rng.integers(-15, 16, size=3)
-            pad_color = tuple(int(np.clip(_PCB_COPPER[i] + jitter[i], 0, 255)) for i in range(3))
-            cv2.circle(image, (cx, cy), pad_r, pad_color, -1)
-            cv2.circle(image, (cx, cy), max(1, pad_r // 2), _PCB_HOLE, -1)
-
-        # Silkscreen component outlines
-        n_components = int(self.rng.integers(1, 7))
-        outline_t = max(1, size // 200)
-        for _ in range(n_components):
-            x = int(self.rng.integers(0, max(1, size - size // 4)))
-            y = int(self.rng.integers(0, max(1, size - size // 4)))
-            w = int(self.rng.integers(size // 12, size // 3))
-            h = int(self.rng.integers(size // 12, size // 3))
-            cv2.rectangle(image, (x, y), (x + w, y + h), _PCB_SILK, outline_t)
-
-        return image
-
-    # ------------------------------------------------------------------
-    # Realistic PCB — detailed board with ICs, resistors, capacitors, labels
-    # ------------------------------------------------------------------
+        base_b = int(self._rng.integers(60, 110))
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        img[:, :, 0] = base_b
+        img[:, :, 1] = int(base_b * 0.35)
+        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        self._add_pcb_traces(img, size, trace_color=(int(base_b + 40), int(base_b * 0.5), 0))
+        return np.clip(img, 0, 255).astype(np.uint8)
 
     def _realistic_pcb(self, size: int) -> np.ndarray:
-        base_color = _PCB_BASE if bool(self.rng.random() > 0.4) else _BLUE_PCB_BASE
-        image = np.full((size, size, 3), base_color, dtype=np.uint8)
-
-        noise = self.rng.integers(-6, 7, (size, size, 3), dtype=np.int16)
-        image = np.clip(image.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-
-        # Routed copper traces (L-shaped routing)
-        n_routes = int(self.rng.integers(5, 16))
-        for _ in range(n_routes):
-            x1 = int(self.rng.integers(0, size))
-            y1 = int(self.rng.integers(0, size))
-            x_mid = int(self.rng.integers(0, size))
-            y2 = int(self.rng.integers(0, size))
-            t = max(1, int(size * self.rng.uniform(0.003, 0.012)))
-            jitter = self.rng.integers(-15, 16, size=3)
-            c = tuple(int(np.clip(_PCB_COPPER[i] + jitter[i], 0, 255)) for i in range(3))
-            cv2.line(image, (x1, y1), (x_mid, y1), c, t)
-            cv2.line(image, (x_mid, y1), (x_mid, y2), c, t)
-
-        # IC packages (DIP or SOIC style rectangles with legs)
-        n_ics = int(self.rng.integers(0, 4))
+        # Detailed PCB with ICs, resistors, capacitors
+        base_g = int(self._rng.integers(18, 48))
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        img[:, :, 1] = base_g
+        noise = self._rng.normal(0, 2.5, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        self._add_pcb_traces(img, size, trace_color=(0, int(base_g + 40), 0))
+        # IC packages
+        n_ics = int(self._rng.integers(1, 4))
         for _ in range(n_ics):
-            ic_w = int(self.rng.integers(size // 8, size // 3))
-            ic_h = int(self.rng.integers(size // 12, size // 6))
-            x = int(self.rng.integers(0, max(1, size - ic_w)))
-            y = int(self.rng.integers(0, max(1, size - ic_h)))
-            # IC body (dark gray)
-            cv2.rectangle(image, (x, y), (x + ic_w, y + ic_h), (40, 40, 40), -1)
-            cv2.rectangle(image, (x, y), (x + ic_w, y + ic_h), _PCB_SILK, max(1, size // 200))
-            # Pin notch
-            notch_cx = x + ic_w // 2
-            cv2.circle(image, (notch_cx, y), max(2, ic_h // 8), (55, 55, 55), -1)
-            # Pin legs on top and bottom
-            n_pins = max(2, ic_w // max(1, size // 20))
-            pin_spacing = max(2, ic_w // max(1, n_pins))
-            for p in range(n_pins):
-                px = x + p * pin_spacing + pin_spacing // 2
-                pad_r = max(1, size // 80)
-                jitter = self.rng.integers(-10, 11, size=3)
-                pad_c = tuple(int(np.clip(_PCB_COPPER[i] + jitter[i], 0, 255)) for i in range(3))
-                cv2.circle(image, (px, y - 3), pad_r, pad_c, -1)
-                cv2.circle(image, (px, y + ic_h + 3), pad_r, pad_c, -1)
+            ix = int(self._rng.integers(5, size - 30))
+            iy = int(self._rng.integers(5, size - 20))
+            iw = int(self._rng.integers(15, 35))
+            ih = int(self._rng.integers(10, 25))
+            cv2.rectangle(img.astype(np.uint8), (ix, iy), (ix + iw, iy + ih), (30, 30, 30), -1)
+            cv2.rectangle(img.astype(np.uint8), (ix, iy), (ix + iw, iy + ih), (50, 50, 50), 1)
+        # SMD resistors/caps
+        n_components = int(self._rng.integers(3, 10))
+        for _ in range(n_components):
+            cx = int(self._rng.integers(2, size - 10))
+            cy = int(self._rng.integers(2, size - 8))
+            w_comp = int(self._rng.integers(4, 10))
+            h_comp = int(self._rng.integers(2, 5))
+            comp_v = int(self._rng.integers(80, 160))
+            cv2.rectangle(img.astype(np.uint8), (cx, cy), (cx + w_comp, cy + h_comp),
+                          (comp_v, comp_v, comp_v), -1)
+        return np.clip(img, 0, 255).astype(np.uint8)
 
-        # Resistors (small colored rectangles with silk bands)
-        n_res = int(self.rng.integers(2, 10))
-        for _ in range(n_res):
-            r_w = int(self.rng.integers(size // 18, size // 8))
-            r_h = max(3, size // 28)
-            rx = int(self.rng.integers(0, max(1, size - r_w)))
-            ry = int(self.rng.integers(0, max(1, size - r_h)))
-            rotate = bool(self.rng.random() > 0.5)
-            if rotate:
-                r_w, r_h = r_h, r_w
-            cv2.rectangle(image, (rx, ry), (rx + r_w, ry + r_h), (160, 155, 140), -1)
-            # Pads on both ends
-            for side in [0, 1]:
-                px = rx + side * r_w
-                py = ry + r_h // 2
-                pad_r = max(1, r_h // 2)
-                cv2.circle(image, (px, py), pad_r, _PCB_COPPER, -1)
-
-        # Capacitors (small circles/cylinders)
-        n_caps = int(self.rng.integers(1, 6))
-        for _ in range(n_res):  # noqa (intentionally using n_res loop count)
-            pass
-        for _ in range(n_caps):
-            cap_r = max(3, int(size * self.rng.uniform(0.015, 0.04)))
-            cx_c = int(self.rng.integers(cap_r, size - cap_r))
-            cy_c = int(self.rng.integers(cap_r, size - cap_r))
-            cap_color_top = (50, 55, 100) if bool(self.rng.random() > 0.5) else (30, 100, 30)
-            cv2.circle(image, (cx_c, cy_c), cap_r, cap_color_top, -1)
-            cv2.circle(image, (cx_c, cy_c), cap_r, _PCB_SILK, max(1, cap_r // 5))
-            # Pad underneath
-            cv2.circle(image, (cx_c, cy_c), max(1, cap_r + 2), _PCB_COPPER, max(1, size // 100))
-
-        # Component labels (silkscreen text)
-        n_labels = int(self.rng.integers(3, 10))
-        label_prefixes = ["D", "R", "C", "U", "Q", "L", "J"]
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = max(0.2, size / 800)
-        font_t = max(1, size // 300)
-        for i in range(n_labels):
-            prefix = label_prefixes[int(self.rng.integers(0, len(label_prefixes)))]
-            num = int(self.rng.integers(1, 12))
-            label = f"{prefix}{num}"
-            lx = int(self.rng.integers(0, max(1, size - size // 5)))
-            ly = int(self.rng.integers(size // 20, size - size // 20))
-            cv2.putText(image, label, (lx, ly), font, font_scale, _PCB_SILK, font_t, cv2.LINE_AA)
-
-        # Through-hole LED mounting pads
-        n_led_pads = int(self.rng.integers(1, 5))
-        for _ in range(n_led_pads):
-            lx = int(self.rng.integers(0, size))
-            ly = int(self.rng.integers(0, size))
-            r = max(3, int(size * self.rng.uniform(0.012, 0.035)))
-            cv2.circle(image, (lx, ly), r + 2, _PCB_COPPER, -1)
-            cv2.circle(image, (lx, ly), r, _PCB_HOLE, -1)
-
-        return image
+    def _add_pcb_traces(self, img: np.ndarray, size: int, trace_color: tuple[int, int, int]) -> None:
+        n_horiz = int(self._rng.integers(3, 8))
+        for _ in range(n_horiz):
+            y = int(self._rng.integers(0, size))
+            x1, x2 = sorted(self._rng.integers(0, size, size=2).tolist())
+            cv2.line(img.astype(np.uint8), (x1, y), (x2, y), trace_color, 1)
+        n_vert = int(self._rng.integers(3, 8))
+        for _ in range(n_vert):
+            x = int(self._rng.integers(0, size))
+            y1, y2 = sorted(self._rng.integers(0, size, size=2).tolist())
+            cv2.line(img.astype(np.uint8), (x, y1), (x, y2), trace_color, 1)
+        # Pads
+        n_pads = int(self._rng.integers(4, 12))
+        for _ in range(n_pads):
+            px = int(self._rng.integers(0, size))
+            py = int(self._rng.integers(0, size))
+            pad_r = int(self._rng.integers(2, 6))
+            pad_v = int(self._rng.integers(160, 200))
+            cv2.circle(img.astype(np.uint8), (px, py), pad_r, (pad_v, pad_v - 20, 0), -1)
 
     # ------------------------------------------------------------------
-    # Metal panel (brushed aluminum)
+    # Metal styles
     # ------------------------------------------------------------------
 
     def _metal(self, size: int) -> np.ndarray:
-        base = int(self.rng.integers(130, 195))
-        image = np.empty((size, size, 3), dtype=np.uint8)
+        base_v = int(self._rng.integers(100, 165))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        # Brushed horizontal texture
         for y in range(size):
-            val = int(np.clip(base + self.rng.integers(-12, 13), 0, 255))
-            image[y, :] = (val, val, val)
-        sheen = np.linspace(0.88, 1.12, size, dtype=np.float32)
-        for x in range(size):
-            image[:, x] = np.clip(image[:, x].astype(np.float32) * sheen[x], 0, 255).astype(np.uint8)
-        hl_x = int(self.rng.integers(size // 4, 3 * size // 4))
-        hl_w = int(size * self.rng.uniform(0.05, 0.18))
-        for dx in range(-hl_w, hl_w + 1):
-            x = hl_x + dx
-            if 0 <= x < size:
-                alpha = 1.0 - abs(dx) / max(1, hl_w)
-                image[:, x] = np.clip(image[:, x].astype(np.float32) + alpha * 28, 0, 255).astype(np.uint8)
-        return image
+            streak = float(self._rng.normal(0, 8))
+            img[y, :, :] = np.clip(img[y, :, :] + streak, 0, 255)
+        # Specular highlight band
+        hl_y = int(size * self._rng.uniform(0.1, 0.4))
+        hl_w = int(size * self._rng.uniform(0.05, 0.15))
+        hl_band = np.zeros((size, size), dtype=np.float32)
+        hl_band[max(0, hl_y - hl_w // 2):hl_y + hl_w // 2, :] = 1.0
+        k = max(3, (hl_w | 1))
+        hl_band = cv2.GaussianBlur(hl_band, (1, k), hl_w * 0.4)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + hl_band * 60, 0, 255)
+        return img.astype(np.uint8)
+
+    def _brushed_metal(self, size: int) -> np.ndarray:
+        base_v = int(self._rng.integers(80, 150))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        # Strong directional brushing
+        n_streaks = int(self._rng.integers(size // 4, size // 2))
+        for _ in range(n_streaks):
+            y = int(self._rng.integers(0, size))
+            streak_v = float(self._rng.normal(0, 18))
+            streak_len = int(self._rng.integers(size // 4, size))
+            x_start = int(self._rng.integers(0, size))
+            x_end = min(size, x_start + streak_len)
+            img[y, x_start:x_end, :] = np.clip(img[y, x_start:x_end, :] + streak_v, 0, 255)
+        # Slight blue tint (steel)
+        img[:, :, 0] = np.clip(img[:, :, 0] + self._rng.uniform(0, 10), 0, 255)
+        img[:, :, 2] = np.clip(img[:, :, 2] - self._rng.uniform(0, 10), 0, 255)
+        # Multiple highlight bands
+        n_hl = int(self._rng.integers(1, 4))
+        for _ in range(n_hl):
+            hl_y = int(self._rng.integers(0, size))
+            hl_w = max(1, int(size * self._rng.uniform(0.01, 0.05)))
+            for dy in range(-hl_w // 2, hl_w // 2 + 1):
+                y_pos = hl_y + dy
+                if 0 <= y_pos < size:
+                    img[y_pos, :, :] = np.clip(img[y_pos, :, :] + 40, 0, 255)
+        return img.astype(np.uint8)
+
+    def _aluminum_pcb(self, size: int) -> np.ndarray:
+        base_v = int(self._rng.integers(140, 190))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        # Aluminum substrate (slightly warm)
+        img[:, :, 2] = np.clip(img[:, :, 2] - 8, 0, 255)
+        noise = self._rng.normal(0, 5, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        # PCB traces on metal
+        self._add_pcb_traces(img, size, trace_color=(180, 140, 60))
+        # Anodized patches
+        n_patches = int(self._rng.integers(1, 4))
+        for _ in range(n_patches):
+            px = int(self._rng.integers(0, size))
+            py = int(self._rng.integers(0, size))
+            patch_v = int(self._rng.integers(base_v - 20, base_v + 20))
+            cv2.circle(img.astype(np.uint8), (px, py), int(self._rng.integers(4, 12)),
+                       (patch_v,) * 3, -1)
+        return np.clip(img, 0, 255).astype(np.uint8)
 
     # ------------------------------------------------------------------
-    # Noisy texture (multi-scale)
-    # ------------------------------------------------------------------
-
-    def _noisy(self, size: int) -> np.ndarray:
-        base = self.rng.integers(20, 120, size=3).astype(np.float32)
-        image = np.full((size, size, 3), base, dtype=np.float32)
-        for scale in [1, 2, 4, 8]:
-            s = max(1, size // scale)
-            layer = self.rng.random((s, s, 3)).astype(np.float32)
-            if s != size:
-                layer = cv2.resize(layer, (size, size), interpolation=cv2.INTER_LINEAR)
-            image += layer * (40.0 / scale)
-        return np.clip(image, 0, 255).astype(np.uint8)
-
-    # ------------------------------------------------------------------
-    # White studio — clean light background for isolated component shots
+    # Studio / special styles
     # ------------------------------------------------------------------
 
     def _white_studio(self, size: int) -> np.ndarray:
-        # Base: very light gray to white
-        base_val = int(self.rng.integers(230, 252))
-        image = np.full((size, size, 3), (base_val, base_val, base_val), dtype=np.float32)
-
-        # Very slight warm or cool tint
-        tint_b = float(self.rng.uniform(-8, 8))
-        tint_g = float(self.rng.uniform(-5, 5))
-        tint_r = float(self.rng.uniform(-8, 8))
-        image[:, :, 0] = np.clip(image[:, :, 0] + tint_b, 0, 255)
-        image[:, :, 1] = np.clip(image[:, :, 1] + tint_g, 0, 255)
-        image[:, :, 2] = np.clip(image[:, :, 2] + tint_r, 0, 255)
-
-        # Subtle vignette (slightly darker corners)
+        base_v = int(self._rng.integers(230, 252))
+        img = np.full((size, size, 3), base_v, dtype=np.float32)
+        # Vignette
         cx, cy = size / 2, size / 2
-        max_dist = np.sqrt(cx ** 2 + cy ** 2)
         y_idx, x_idx = np.ogrid[:size, :size]
-        dist = np.sqrt((x_idx - cx) ** 2 + (y_idx - cy) ** 2)
-        vignette = 1.0 - 0.12 * (dist / max_dist) ** 2
+        dist = np.sqrt((x_idx - cx) ** 2 + (y_idx - cy) ** 2) / (size * 0.7)
+        vignette = np.clip(dist, 0, 1) ** 2
         for ch in range(3):
-            image[:, :, ch] *= vignette
-
-        # Faint soft shadow under component area (central slight darkening)
-        shadow_r = size // 3
+            img[:, :, ch] = np.clip(img[:, :, ch] - vignette * self._rng.uniform(20, 60), 0, 255)
+        # Subtle shadow beneath subject area
+        shadow_y = int(size * self._rng.uniform(0.55, 0.75))
         shadow = np.zeros((size, size), dtype=np.float32)
-        cv2.circle(shadow, (size // 2, size // 2 + size // 8), shadow_r, 1.0, -1)
-        shadow = cv2.GaussianBlur(shadow, (0, 0), shadow_r * 0.4)
-        image[:, :, 0] -= shadow * 8
-        image[:, :, 1] -= shadow * 8
-        image[:, :, 2] -= shadow * 8
+        for y in range(shadow_y, min(size, shadow_y + size // 5)):
+            alpha = (y - shadow_y) / (size // 5)
+            shadow[y, :] = alpha * self._rng.uniform(10, 30)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] - shadow, 0, 255)
+        return img.astype(np.uint8)
 
-        return np.clip(image, 0, 255).astype(np.uint8)
+    def _textured(self, size: int) -> np.ndarray:
+        texture_type = self._rng.choice(["concrete", "fabric", "rubber", "foam"])
+        if texture_type == "concrete":
+            base_v = int(self._rng.integers(90, 160))
+            img = np.full((size, size, 3), base_v, dtype=np.float32)
+            noise = self._rng.normal(0, 15, (size, size)).astype(np.float32)
+            for ch in range(3):
+                img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+            k = 5
+            img = cv2.GaussianBlur(img, (k, k), 1.5)
+        elif texture_type == "fabric":
+            base_v = int(self._rng.integers(40, 180))
+            img = np.full((size, size, 3), base_v, dtype=np.float32)
+            for y in range(0, size, 2):
+                img[y, :, :] = np.clip(img[y, :, :] + 8, 0, 255)
+            for x in range(0, size, 2):
+                img[:, x, :] = np.clip(img[:, x, :] + 5, 0, 255)
+        elif texture_type == "rubber":
+            base_v = int(self._rng.integers(15, 50))
+            img = np.full((size, size, 3), base_v, dtype=np.float32)
+            noise = self._rng.normal(0, 4, (size, size)).astype(np.float32)
+            for ch in range(3):
+                img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        else:  # foam
+            base_v = int(self._rng.integers(150, 230))
+            img = np.full((size, size, 3), base_v, dtype=np.float32)
+            noise = self._rng.normal(0, 10, (size, size)).astype(np.float32)
+            for ch in range(3):
+                img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+            k = 9
+            img = cv2.GaussianBlur(img, (k, k), 3.0)
+        return np.clip(img, 0, 255).astype(np.uint8)
 
-    # ------------------------------------------------------------------
-    # Aluminum PCB — white/silver SMD panel (like OSRAM/LED strip boards)
-    # ------------------------------------------------------------------
+    def _gradient(self, size: int) -> np.ndarray:
+        direction = self._rng.choice(["horizontal", "vertical", "diagonal", "radial"])
+        c1 = self._rng.integers(0, 256, size=3).astype(np.float32)
+        c2 = self._rng.integers(0, 256, size=3).astype(np.float32)
+        img = np.zeros((size, size, 3), dtype=np.float32)
+        if direction == "horizontal":
+            t = np.linspace(0, 1, size, dtype=np.float32)[np.newaxis, :, np.newaxis]
+            img[:] = c1 * (1 - t) + c2 * t
+        elif direction == "vertical":
+            t = np.linspace(0, 1, size, dtype=np.float32)[:, np.newaxis, np.newaxis]
+            img[:] = c1 * (1 - t) + c2 * t
+        elif direction == "diagonal":
+            tx = np.linspace(0, 1, size, dtype=np.float32)[np.newaxis, :, np.newaxis]
+            ty = np.linspace(0, 1, size, dtype=np.float32)[:, np.newaxis, np.newaxis]
+            t = (tx + ty) / 2
+            img[:] = c1 * (1 - t) + c2 * t
+        else:  # radial
+            cx, cy = size / 2, size / 2
+            y_idx, x_idx = np.ogrid[:size, :size]
+            dist = np.sqrt((x_idx - cx) ** 2 + (y_idx - cy) ** 2)
+            t = np.clip(dist / (size * 0.7), 0, 1)[:, :, np.newaxis]
+            img[:] = c1 * (1 - t) + c2 * t
+        return np.clip(img, 0, 255).astype(np.uint8)
 
-    def _aluminum_pcb(self, size: int) -> np.ndarray:
-        # White-ish aluminum substrate
-        base = int(self.rng.integers(200, 230))
-        image = np.full((size, size, 3), (base, base, base - 5), dtype=np.uint8)
-
-        # Subtle texture lines (rolled aluminum grain)
-        for y in range(0, size, max(1, size // 60)):
-            val = int(np.clip(base + self.rng.integers(-4, 5), 0, 255))
-            thickness = max(1, size // 300)
-            cv2.line(image, (0, y), (size, y), (val, val, val - 3), thickness)
-
-        # Board outline
-        margin = max(2, size // 30)
-        cv2.rectangle(image, (margin, margin), (size - margin, size - margin), (140, 142, 142), max(1, size // 150))
-
-        # Fine copper traces
-        n_traces = int(self.rng.integers(3, 12))
-        trace_color = (140, 155, 180)  # light copper on aluminum
-        for _ in range(n_traces):
-            x1 = int(self.rng.integers(margin, size - margin))
-            y1 = int(self.rng.integers(margin, size - margin))
-            x2 = int(self.rng.integers(margin, size - margin))
-            y2 = int(self.rng.integers(margin, size - margin))
-            t = max(1, int(size * self.rng.uniform(0.002, 0.008)))
-            cv2.line(image, (x1, y1), (x2, y2), trace_color, t)
-
-        # SMD LED pads (grid pattern)
-        n_cols = int(self.rng.integers(2, 5))
-        n_rows = int(self.rng.integers(1, 4))
-        cell_w = (size - 2 * margin) // max(1, n_cols)
-        cell_h = (size - 2 * margin) // max(1, n_rows)
-
-        for row in range(n_rows):
-            for col in range(n_cols):
-                px = margin + col * cell_w + cell_w // 2
-                py = margin + row * cell_h + cell_h // 2
-                pad_w = max(3, cell_w // 4)
-                pad_h = max(2, cell_h // 6)
-                pad_color = (160, 165, 165)
-                # Left pad
-                cv2.rectangle(image, (px - pad_w - pad_w, py - pad_h), (px - pad_w, py + pad_h), pad_color, -1)
-                # Right pad
-                cv2.rectangle(image, (px + pad_w, py - pad_h), (px + pad_w + pad_w, py + pad_h), pad_color, -1)
-                # Center die area (square)
-                die_r = max(2, min(pad_w, pad_h))
-                cv2.rectangle(image, (px - die_r, py - die_r), (px + die_r, py + die_r), (190, 192, 190), -1)
-
-        # + / - polarity labels
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = max(0.2, size / 1000)
-        cv2.putText(image, "+", (margin + 2, size - margin - 4), font, font_scale, (80, 80, 80), 1, cv2.LINE_AA)
-        cv2.putText(image, "-", (size - margin - 12, size - margin - 4), font, font_scale, (80, 80, 80), 1, cv2.LINE_AA)
-
-        return image
+    def _plain(self, size: int) -> np.ndarray:
+        color = self._rng.integers(0, 256, size=3).astype(np.uint8)
+        img = np.full((size, size, 3), color, dtype=np.uint8)
+        return img
