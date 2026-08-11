@@ -1,0 +1,52 @@
+seed: 42
+total: 100
+output_dir: data/generated
+image_format: jpg
+image_quality: 95
+
+sizes:
+  - 128
+
+split:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+
+on_ratio: 0.50
+
+led:
+  colors:
+    - red
+    - green
+    - yellow
+    - blue
+    - white
+    - orange
+    - purple
+    - cyan
+    - magenta
+    - amber
+    - warm_white
+    - cool_white
+    - lime_green
+    - uv_violet
+  shapes:
+    - round
+    - rectangular
+    - square
+  size_range: [0.08, 0.35]
+  position_margin: 0.08
+
+backgrounds:
+  plain: 0.25
+  gradient: 0.15
+  pcb: 0.30
+  metal: 0.20
+  noisy: 0.10
+
+variation:
+  blur_range: [0.0, 3.0]
+  noise_sigma_range: [0.0, 15.0]
+  camera_angle_range: [-10.0, 10.0]
+  ambient_factor_range: [0.5, 1.5]
+  brightness_range: [0.7, 1.3]
