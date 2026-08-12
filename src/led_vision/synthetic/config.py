@@ -158,6 +158,7 @@ class DatasetConfig:
     output_dir: Path = field(default_factory=lambda: Path("data/generated"))
     image_format: str = "jpg"
     image_quality: int = 95
+    n_workers: int = 1              # parallel worker processes (1 = single-threaded)
 
     # balanced | imbalanced_80_20 | imbalanced_95_5 | rare_fault
     class_balance: str = "balanced"
@@ -185,7 +186,8 @@ def load_config(path: Path) -> DatasetConfig:
 
     cfg = DatasetConfig()
 
-    for key in ("seed", "total", "master_size", "image_format", "image_quality", "class_balance"):
+    for key in ("seed", "total", "master_size", "image_format", "image_quality",
+                "class_balance", "n_workers"):
         if key in d:
             setattr(cfg, key, d[key])
 

@@ -4,6 +4,9 @@ from __future__ import annotations
 import numpy as np
 import cv2
 
+# Hard cap on Gaussian kernel size — keeps blur fast even at 2048×2048
+_MAX_K = 201
+
 
 # ---------------------------------------------------------------------------
 # Ambient lighting
@@ -133,8 +136,7 @@ def _add_bloom(
     glow = np.zeros_like(image, dtype=np.float32)
     cv2.circle(glow, (cx, cy), radius, color, -1)
     sigma = max(1.0, radius * sigma_factor)
-    k = max(3, int(sigma * 4) | 1)
-    glow = cv2.GaussianBlur(glow, (k, k), sigma)
+    k = min(_MAX_K, max(3, int(sigma * 4) | 1))
     return np.clip(image.astype(np.float32) + glow * intensity, 0, 255).astype(np.uint8)
 
 
@@ -188,19 +190,18 @@ def apply_occlusion(
         shadow_intensity = float(rng.uniform(0.30, 0.70))
         direction = rng.choice(["top", "bottom", "left", "right"])
         shadow_map = np.zeros((h, w), dtype=np.float32)
-        half = (h if direction in ("top", "bottom") else w) // 2
         if direction == "top":
-            for y in range(half):
-                shadow_map[y, :] = shadow_intensity * (1 - y / half)
+            t = np.linspace(shadow_intensity, 0, h // 2, dtype=np.float32)
+            shadow_map[: h // 2, :] = t[:, np.newaxis]
         elif direction == "bottom":
-            for y in range(half, h):
-                shadow_map[y, :] = shadow_intensity * ((y - half) / half)
+            t = np.linspace(0, shadow_intensity, h - h // 2, dtype=np.float32)
+            shadow_map[h // 2 :, :] = t[:, np.newaxis]
         elif direction == "left":
-            for x in range(half):
-                shadow_map[:, x] = shadow_intensity * (1 - x / half)
+            t = np.linspace(shadow_intensity, 0, w // 2, dtype=np.float32)
+            shadow_map[:, : w // 2] = t[np.newaxis, :]
         else:
-            for x in range(half, w):
-                shadow_map[:, x] = shadow_intensity * ((x - half) / half)
+            t = np.linspace(0, shadow_intensity, w - w // 2, dtype=np.float32)
+            shadow_map[:, w // 2 :] = t[np.newaxis, :]
         result = np.clip(
             result.astype(np.float32) * (1 - shadow_map[:, :, np.newaxis]),
             0, 255,
@@ -288,8 +289,7 @@ def apply_false_positive(
         glow = np.zeros_like(result, dtype=np.float32)
         cv2.ellipse(glow, (cx, cy), axes, angle, 0, 360, (255, 255, 255), -1)
         sigma = size * 0.5
-        k = max(3, int(sigma * 4) | 1)
-        glow = cv2.GaussianBlur(glow, (k, k), sigma)
+        k = min(_MAX_K, max(3, int(sigma * 4) | 1))
         result = np.clip(result.astype(np.float32) + glow * 0.75, 0, 255).astype(np.uint8)
 
     return result, cx, cy, size

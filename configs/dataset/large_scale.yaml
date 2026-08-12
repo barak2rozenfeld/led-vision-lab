@@ -1,0 +1,154 @@
+# LED Vision Lab — Large-scale dataset config
+# Target: 50 000 scenes × 4 sizes = 200 000 image files
+#
+# Run:
+#   uv run python scripts/generate_dataset.py \
+#       --config configs/dataset/large_scale.yaml
+#
+# Estimated time (8-core machine): ~2-4 hours
+# Estimated disk space:            ~12-20 GB
+
+seed: 42
+total: 50000
+master_size: 256        # matches largest export; 4× faster than 512
+image_format: jpg
+image_quality: 92       # slightly lower for smaller files at scale
+
+# ------- adjust to your CPU core count (leave 2 cores for OS) ----------
+n_workers: 4            # e.g. set to 6 on 8-core, 14 on 16-core
+
+export_sizes:
+  - 64
+  - 128
+  - 224
+  - 256
+
+output_dir: data/generated_200k
+
+class_balance: balanced
+
+split:
+  train: 0.70
+  val:   0.15
+  test:  0.15
+
+led:
+  colors:
+    - red
+    - green
+    - yellow
+    - blue
+    - white
+    - orange
+    - purple
+    - cyan
+    - magenta
+    - amber
+    - warm_white
+    - cool_white
+    - lime_green
+    - uv_violet
+  shapes:
+    - round
+    - square
+    - rectangular
+    - dome
+    - dome_side
+    - smd
+  lens_types:
+    - clear
+    - diffused
+  brightness_range:      [0.05, 1.0]
+  size_range:            [0.04, 0.22]
+  position_margin:       0.05
+  glow_radius_range:     [0.6, 3.0]
+  halo_intensity_range:  [0.1, 1.0]
+
+multi_led:
+  single: 0.60
+  two:    0.18
+  four:   0.12
+  row:    0.07
+  grid:   0.03
+  mixed_states: true
+
+backgrounds:
+  black_plastic:   0.09
+  gray_plastic:    0.08
+  white_plastic:   0.05
+  dark_enclosure:  0.07
+  light_enclosure: 0.06
+  pcb:             0.09
+  blue_pcb:        0.05
+  realistic_pcb:   0.09
+  metal:           0.06
+  brushed_metal:   0.05
+  white_studio:    0.05
+  aluminum_pcb:    0.05
+  textured:        0.05
+  gradient:        0.05
+  plain:           0.06
+
+ambient:
+  dark_room:     0.10
+  normal_indoor: 0.35
+  bright_office: 0.15
+  directional:   0.15
+  low_light:     0.10
+  warm:          0.05
+  cool:          0.05
+  backlight:     0.05
+
+glare:
+  none:               0.50
+  small_highlight:    0.20
+  strong_glare:       0.10
+  reflection_near:    0.10
+  reflection_overlap: 0.05
+  glossy:             0.05
+
+occlusion:
+  none:       0.75
+  cable:      0.08
+  label:      0.07
+  shadow:     0.05
+  panel_edge: 0.05
+
+false_positive:
+  enabled: true
+  rate:    0.05
+  types:
+    - colored_screw
+    - reflection_spot
+    - printed_circle
+    - colored_button
+    - display_pixel
+    - specular_highlight
+
+camera:
+  noise_sigma_range:        [0.0, 20.0]
+  blur_sigma_range:         [0.0, 3.0]
+  motion_blur_prob:         0.10
+  motion_blur_length_range: [3, 15]
+  chromatic_shift_range:    [0.0, 3.0]
+  gamma_range:              [0.7, 1.5]
+  white_balance_shift:      0.10
+  jpeg_artifact_prob:       0.10
+  jpeg_quality_range:       [60, 85]
+
+difficulty:
+  easy:    0.25
+  medium:  0.35
+  hard:    0.25
+  extreme: 0.15
+
+groups:
+  clean_easy:            0.20
+  lighting_variation:    0.15
+  camera_variation:      0.15
+  geometry_perspective:  0.10
+  glare_reflections:     0.10
+  blur_noise:            0.10
+  difficult_on_off:      0.10
+  false_positives:       0.05
+  occlusion:             0.05

@@ -39,6 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["balanced", "imbalanced_80_20", "imbalanced_95_5", "rare_fault"],
         help="Class balance preset",
     )
+    parser.add_argument(
+        "--workers", type=int, default=None,
+        help="Parallel worker processes (default: from config, usually 1)",
+    )
     return parser
 
 
@@ -66,13 +70,17 @@ def main() -> None:
         config.export_sizes = args.sizes
     if args.balance is not None:
         config.class_balance = args.balance
+    if args.workers is not None:
+        config.n_workers = args.workers
 
-    print(f"Scenes : {config.total}")
-    print(f"Master : {config.master_size}×{config.master_size}")
-    print(f"Sizes  : {config.export_sizes}")
-    print(f"Balance: {config.class_balance}")
-    print(f"Seed   : {config.seed}")
-    print(f"Output : {config.output_dir}")
+    print(f"Scenes  : {config.total:,}")
+    print(f"Master  : {config.master_size}×{config.master_size}")
+    print(f"Sizes   : {config.export_sizes}")
+    print(f"Balance : {config.class_balance}")
+    print(f"Workers : {config.n_workers}")
+    print(f"Seed    : {config.seed}")
+    print(f"Output  : {config.output_dir}")
+    print(f"Total   : ~{config.total * len(config.export_sizes):,} image files")
 
     DatasetGenerator(config).generate()
 

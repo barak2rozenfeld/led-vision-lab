@@ -27,8 +27,9 @@ htmlcov/
 # Type checking
 .mypy_cache/
 
-# Generated dataset (do not commit)
-data/generated/
+# Generated datasets (do not commit — any folder under data/ except samples/)
+data/generated*/
+data/smoke_*/
 
 # Trained model artifacts (do not commit large files)
 artifacts/models/*.pt
