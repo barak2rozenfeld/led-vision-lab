@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import shutil
 from pathlib import Path
 
@@ -17,6 +18,10 @@ import cv2
 import numpy as np
 
 STATES: tuple[str, ...] = ("on", "off")
+MANIFEST_FIELDS: tuple[str, ...] = (
+    "led_color", "led_shape", "led_lens_type", "led_brightness", "difficulty",
+    "ambient_type", "glare_type", "occlusion_type", "size",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,6 +55,8 @@ def copy_samples(
     picked: dict[tuple[str, str], dict[str, str]], dataset: Path, samples_dir: Path
 ) -> list[tuple[str, str, Path]]:
     samples_dir.mkdir(parents=True, exist_ok=True)
+    for old in samples_dir.glob("*.jpg"):
+        old.unlink()
     copied: list[tuple[str, str, Path]] = []
     for (background, state), row in sorted(picked.items()):
         src = dataset / row["filepath"]
@@ -59,6 +66,25 @@ def copy_samples(
         shutil.copyfile(src, dst)
         copied.append((background, state, dst))
     return copied
+
+
+def write_manifest(
+    picked: dict[tuple[str, str], dict[str, str]], samples_dir: Path
+) -> Path:
+    """Write ``samples.json`` describing each sample (read by the web UI)."""
+    entries = [
+        {
+            "file": f"{background}_{state}_{row['led_color']}.jpg",
+            "id": row["id"],
+            "state": state,
+            "background": background,
+            **{key: row[key] for key in MANIFEST_FIELDS},
+        }
+        for (background, state), row in sorted(picked.items())
+    ]
+    path = samples_dir / "samples.json"
+    path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    return path
 
 
 def build_grid(copied: list[tuple[str, str, Path]], grid_path: Path, tile: int) -> None:
@@ -105,8 +131,10 @@ def main() -> None:
 
     picked = select_rows(metadata, args.dataset, args.size)
     copied = copy_samples(picked, args.dataset, args.samples_dir)
+    manifest = write_manifest(picked, args.samples_dir)
     build_grid(copied, args.grid_path, tile=args.size)
     print(f"Copied {len(copied)} samples to {args.samples_dir}")
+    print(f"Manifest written to {manifest}")
     print(f"Grid written to {args.grid_path}")
 
 
