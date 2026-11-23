@@ -2,21 +2,28 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ScanLine, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import {
-  BACKGROUND_WEIGHTS,
-  DATASET_STATS,
-  DIFFICULTY_WEIGHTS,
-  FAMILY_COLOR,
-} from "../data/dataset";
+import { DIFFICULTY_COLOR, DIFFICULTY_ORDER, FAMILY_COLOR } from "../data/dataset";
 import { BACKGROUND_FAMILY, SAMPLES, prettyLabel } from "../data/samples";
-import type { Sample } from "../types";
-import { Section, StateBadge } from "./ui";
+import type { Sourced } from "../hooks/useBackendData";
+import type { DatasetStats, Sample } from "../types";
+import { ProvenanceNote, Section, StateBadge } from "./ui";
+
+const share = (counts: Record<string, number>, key: string) => {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return total ? Math.round(((counts[key] ?? 0) / total) * 1000) / 10 : 0;
+};
 
 const FAMILIES = ["All", "PCB", "Enclosure", "Plastic", "Metal", "Studio"] as const;
 const STATES = ["All", "on", "off"] as const;
 const DIFFICULTIES = ["All", "easy", "medium"] as const;
 
-export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => void }) {
+export function DatasetExplorer({
+  stats,
+  onDetect,
+}: {
+  stats: Sourced<DatasetStats> | null;
+  onDetect: (sample: Sample) => void;
+}) {
   const [family, setFamily] = useState<(typeof FAMILIES)[number]>("All");
   const [state, setState] = useState<(typeof STATES)[number]>("All");
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>("All");
@@ -33,26 +40,60 @@ export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => vo
     [family, state, difficulty],
   );
 
+  const s = stats?.data;
+  const { backgrounds, pcbShare, difficulties, maxDifficulty } = useMemo(() => {
+    if (!s) return { backgrounds: [], pcbShare: 0, difficulties: [], maxDifficulty: 1 };
+    const familyOrder = Object.keys(FAMILY_COLOR);
+    const bg = Object.keys(s.counts.background)
+      .map((name) => ({
+        name: prettyLabel(name),
+        value: share(s.counts.background, name),
+        family: BACKGROUND_FAMILY[name] ?? "Studio",
+      }))
+      .sort((a, b) => familyOrder.indexOf(a.family) - familyOrder.indexOf(b.family) || b.value - a.value);
+    const diff = DIFFICULTY_ORDER.map((name) => ({
+      name,
+      count: s.counts.difficulty[name] ?? 0,
+      value: share(s.counts.difficulty, name),
+      color: DIFFICULTY_COLOR[name],
+    }));
+    return {
+      backgrounds: bg,
+      pcbShare: bg.filter((b) => b.family === "PCB").reduce((a, b) => a + b.value, 0),
+      difficulties: diff,
+      maxDifficulty: Math.max(1, ...diff.map((d) => d.value)),
+    };
+  }, [s]);
+
   return (
     <Section
       id="dataset"
       eyebrow="03 · Synthetic dataset"
       title={
         <>
-          One million LEDs, <span className="text-on">none of them real.</span>
+          Thousands of LEDs, <span className="text-on">none of them real.</span>
         </>
       }
-      subtitle="Procedurally rendered LEDs on PCBs, enclosures and metal, with glare, occlusion, motion blur, sensor noise and look-alike distractors. Every image is reproducible from its seed and described by 40 metadata fields."
+      subtitle="Procedurally rendered LEDs on PCBs, enclosures and metal, with glare, occlusion, motion blur, sensor noise and look-alike distractors. Every image is reproducible from its seed and described by 40 metadata fields. The same generator scales to a million images."
     >
-      <div className="mb-10 grid gap-5 lg:grid-cols-3">
+      {!s ? (
+        <p className="mb-10 rounded-2xl border border-amber/30 bg-amber/5 p-4 text-sm text-amber">
+          No dataset statistics yet. Run{" "}
+          <code className="font-mono">uv run python scripts/compute_dataset_stats.py --dataset &lt;dir&gt;</code>
+        </p>
+      ) : (
+      <>
+      <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <div className="glass rounded-3xl p-6 lg:col-span-1">
           <p className="mb-1 text-sm font-semibold text-white">Background mix</p>
-          <p className="mb-2 text-xs text-slate-500">PCB-focused configuration · 66 % PCB</p>
+          <p className="mb-2 text-xs text-slate-500">
+            {backgrounds.length} styles · {pcbShare.toFixed(0)} % PCB
+          </p>
           <div className="h-56">
             <ResponsiveContainer>
               <PieChart>
                 <Pie
-                  data={BACKGROUND_WEIGHTS}
+                  data={backgrounds}
                   dataKey="value"
                   nameKey="name"
                   innerRadius="58%"
@@ -60,7 +101,7 @@ export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => vo
                   paddingAngle={2}
                   stroke="none"
                 >
-                  {BACKGROUND_WEIGHTS.map((entry, i) => (
+                  {backgrounds.map((entry, i) => (
                     <Cell
                       key={entry.name}
                       fill={FAMILY_COLOR[entry.family]}
@@ -89,18 +130,20 @@ export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => vo
         <div className="glass rounded-3xl p-6">
           <p className="mb-5 text-sm font-semibold text-white">Difficulty levels</p>
           <div className="flex flex-col gap-4">
-            {DIFFICULTY_WEIGHTS.map((d, i) => (
+            {difficulties.map((d, i) => (
               <div key={d.name}>
                 <div className="mb-1.5 flex justify-between text-xs">
-                  <span className="text-slate-300">{d.name}</span>
-                  <span className="font-mono text-slate-500">{d.value} %</span>
+                  <span className="text-slate-300">{prettyLabel(d.name)}</span>
+                  <span className="font-mono text-slate-500">
+                    {d.count.toLocaleString("en-US")} · {d.value} %
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-white/5">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ backgroundColor: d.color, boxShadow: `0 0 12px ${d.color}` }}
                     initial={{ width: 0 }}
-                    whileInView={{ width: `${(d.value / 35) * 100}%` }}
+                    whileInView={{ width: `${(d.value / maxDifficulty) * 100}%` }}
                     viewport={{ once: true }}
                     transition={{ duration: 1, delay: i * 0.1 }}
                   />
@@ -112,12 +155,12 @@ export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => vo
 
         <div className="glass grid grid-cols-2 gap-3 rounded-3xl p-6">
           {[
-            ["Scenes", DATASET_STATS.scenes.toLocaleString("en-US")],
-            ["Images", DATASET_STATS.images.toLocaleString("en-US")],
-            ["Sizes (px)", DATASET_STATS.sizes.join(" / ")],
-            ["ON / OFF", "50 / 50"],
-            ["LED shapes", String(DATASET_STATS.shapes)],
-            ["Split", "70 / 15 / 15"],
+            ["Scenes", s.scenes.toLocaleString("en-US")],
+            ["Images", s.images.toLocaleString("en-US")],
+            ["Sizes (px)", Object.keys(s.images_by_size).join(" / ")],
+            ["ON / OFF", `${share(s.counts.state, "on")} / ${share(s.counts.state, "off")}`],
+            ["Split", ["train", "val", "test"].map((k) => Math.round(share(s.counts.split, k))).join(" / ")],
+            ["Distractor scenes", `${share(s.counts.false_positive, "True")} %`],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl bg-white/[0.03] p-3">
               <div className="font-mono text-sm text-white">{value}</div>
@@ -126,6 +169,17 @@ export function DatasetExplorer({ onDetect }: { onDetect: (sample: Sample) => vo
           ))}
         </div>
       </div>
+
+      <div className="mb-10">
+        <ProvenanceNote
+          origin={stats.origin}
+          provenance={s.provenance}
+          facts={[s.dataset, `seed ${s.config.seed ?? "?"}`, "counted from metadata.csv"]}
+          command={`uv run python scripts/compute_dataset_stats.py --dataset data/${s.dataset}`}
+        />
+      </div>
+      </>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-6">
         <FilterGroup label="Surface" options={FAMILIES} value={family} onChange={setFamily} />

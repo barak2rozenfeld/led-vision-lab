@@ -1,6 +1,59 @@
 import { motion } from "framer-motion";
+import { Database } from "lucide-react";
 import type { ReactNode } from "react";
-import type { LedState, ResultSource } from "../types";
+import type { DataOrigin, LedState, Provenance, ResultSource } from "../types";
+
+/** Says where the numbers in a panel came from and how to regenerate them. */
+export function ProvenanceNote({
+  origin,
+  provenance,
+  facts,
+  command,
+}: {
+  origin: DataOrigin;
+  provenance: Provenance;
+  facts: string[];
+  command: string;
+}) {
+  const date = new Date(provenance.generated_at).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return (
+    <details className="glass group rounded-2xl px-4 py-3 text-xs text-slate-400">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1">
+        <Database size={14} className="text-signal" />
+        <span className="font-semibold text-slate-200">Where these numbers come from</span>
+        <span
+          className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${
+            origin === "api" ? "border-on/40 text-on" : "border-signal/40 text-signal"
+          }`}
+        >
+          {origin === "api" ? "live from API" : "committed snapshot"}
+        </span>
+        <span className="font-mono">{facts.join(" · ")}</span>
+        <span className="ml-auto text-slate-500 group-open:hidden">details ▾</span>
+      </summary>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono">
+        <dt className="text-slate-500">generated</dt>
+        <dd>{date}</dd>
+        <dt className="text-slate-500">git commit</dt>
+        <dd>
+          {provenance.git_commit?.slice(0, 10) ?? "unknown"}
+          {provenance.git_dirty && (
+            <span className="ml-2 text-amber">+ uncommitted changes (not exactly reproducible)</span>
+          )}
+        </dd>
+        <dt className="text-slate-500">machine</dt>
+        <dd>
+          {provenance.machine} · Python {provenance.python}
+        </dd>
+        <dt className="text-slate-500">reproduce</dt>
+        <dd className="break-all text-slate-300">{command}</dd>
+      </dl>
+    </details>
+  );
+}
 
 export function Section({
   id,

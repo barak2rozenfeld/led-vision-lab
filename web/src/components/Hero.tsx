@@ -1,8 +1,8 @@
 import { animate, motion, useInView, useMotionValue, useTransform } from "framer-motion";
 import { ArrowRight, Database } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DATASET_STATS } from "../data/dataset";
 import { METHODS } from "../data/methods";
+import type { DatasetStats } from "../types";
 import { GlowLed } from "./ui";
 
 const COLS = 22;
@@ -82,14 +82,13 @@ function HeroLed() {
   );
 }
 
-const STATS = [
-  { label: "synthetic images", to: DATASET_STATS.images },
-  { label: "background styles", to: DATASET_STATS.backgrounds },
-  { label: "LED colours", to: DATASET_STATS.colors },
-  { label: "detection methods", to: METHODS.length },
-];
-
-export function Hero() {
+export function Hero({ stats }: { stats: DatasetStats | null }) {
+  const counters = [
+    { label: "synthetic images", to: stats?.images ?? 0 },
+    { label: "background styles", to: Object.keys(stats?.counts.background ?? {}).length },
+    { label: "LED colours", to: Object.keys(stats?.counts.led_color ?? {}).length },
+    { label: "detection methods", to: METHODS.length },
+  ];
   return (
     <section id="top" className="relative overflow-hidden pt-36 pb-24">
       <div className="grid-bg absolute inset-0" />
@@ -125,7 +124,8 @@ export function Hero() {
           className="mt-6 max-w-2xl text-lg text-slate-400"
         >
           From a simple HSV threshold to a fine-tuned YOLO detector, LED Vision Lab compares five
-          ways to verify LED indicators on real hardware, trained on a million synthetic PCB images.
+          ways to verify LED indicators on real hardware, all evaluated on reproducible synthetic
+          PCB images.
         </motion.p>
 
         <motion.div
@@ -151,7 +151,7 @@ export function Hero() {
         </motion.div>
 
         <div className="mt-20 grid w-full max-w-4xl grid-cols-2 gap-4 md:grid-cols-4">
-          {STATS.map((stat) => (
+          {counters.map((stat) => (
             <div key={stat.label} className="glass rounded-2xl px-5 py-6">
               <div className="font-mono text-2xl font-semibold text-white md:text-3xl">
                 <CountUp to={stat.to} />

@@ -3,7 +3,7 @@ import { AlertTriangle, Camera, CameraOff } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DetectionError, detect } from "../api/detection";
 import { METHODS, METHOD_BY_ID } from "../data/methods";
-import type { DetectionResult, MethodId, ResultSource } from "../types";
+import type { DetectionResult, MethodId, MethodStatus, ResultSource } from "../types";
 import { GlowLed, Section } from "./ui";
 
 const FRAME_GAP_MS = 400;
@@ -18,7 +18,13 @@ function cameraErrorMessage(err: unknown): string {
   return "Could not start the camera.";
 }
 
-export function WebcamSection({ source }: { source: ResultSource }) {
+export function WebcamSection({
+  source,
+  methodStatus,
+}: {
+  source: ResultSource;
+  methodStatus: Partial<Record<MethodId, MethodStatus>> | null;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -179,11 +185,14 @@ export function WebcamSection({ source }: { source: ResultSource }) {
               onChange={(e) => changeMethod(e.target.value as MethodId)}
               className="w-full rounded-xl border border-white/10 bg-ink-800 px-3 py-2.5 text-sm text-white outline-none focus:border-signal"
             >
-              {METHODS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} · {m.family}
-                </option>
-              ))}
+              {METHODS.map((m) => {
+                const status = methodStatus?.[m.id] ?? "ready";
+                return (
+                  <option key={m.id} value={m.id} disabled={status !== "ready"}>
+                    {m.name} · {status === "ready" ? m.family : status.replace("_", " ")}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

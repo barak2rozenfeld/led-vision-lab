@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { DetectionError, compareAll, detect, validateImage } from "../api/detection";
 import { METHODS, METHOD_BY_ID } from "../data/methods";
 import { SAMPLES, prettyLabel, sampleToBlob } from "../data/samples";
-import type { DetectionResponse, MethodId, ResultSource, Sample } from "../types";
+import type { DetectionResponse, MethodId, MethodStatus, ResultSource, Sample } from "../types";
 import { ConfidenceRing, Section, StateBadge } from "./ui";
 
 type MethodChoice = MethodId | "all";
@@ -22,9 +22,11 @@ const STRIP = SAMPLES.filter((s) => s.background.includes("pcb")).concat(
 
 export function DetectSection({
   source,
+  methodStatus,
   requestedSample,
 }: {
   source: ResultSource;
+  methodStatus: Partial<Record<MethodId, MethodStatus>> | null;
   requestedSample: Sample | null;
 }) {
   const [image, setImage] = useState<LoadedImage | null>(null);
@@ -107,6 +109,19 @@ export function DetectSection({
     if (image) void run(image, choice);
   };
 
+  const statusOf = (id: MethodId): MethodStatus => methodStatus?.[id] ?? "ready";
+
+  // The live API may not have every method yet; fall back to one it can run.
+  useEffect(() => {
+    const current = methodRef.current;
+    if (current === "all" || statusOf(current) === "ready") return;
+    const fallback = METHODS.find((m) => statusOf(m.id) === "ready");
+    if (fallback) {
+      setMethod(fallback.id);
+      methodRef.current = fallback.id;
+    }
+  }, [methodStatus]);
+
   const primary = results[0]?.result;
 
   return (
@@ -179,16 +194,24 @@ export function DetectSection({
           <div>
             <p className="mb-3 text-sm font-medium text-slate-400">Detector</p>
             <div className="flex flex-wrap gap-2">
-              {METHODS.map((m) => (
-                <MethodChip
-                  key={m.id}
-                  active={method === m.id}
-                  accent={m.accent}
-                  onClick={() => chooseMethod(m.id)}
-                >
-                  {m.name}
-                </MethodChip>
-              ))}
+              {METHODS.map((m) => {
+                const status = statusOf(m.id);
+                return (
+                  <MethodChip
+                    key={m.id}
+                    active={method === m.id}
+                    accent={m.accent}
+                    disabled={status !== "ready"}
+                    title={status === "ready" ? m.family : `${m.name} is ${status.replace("_", " ")}`}
+                    onClick={() => chooseMethod(m.id)}
+                  >
+                    {m.name}
+                    {status !== "ready" && (
+                      <span className="font-mono text-[10px] text-slate-500">{status.replace("_", " ")}</span>
+                    )}
+                  </MethodChip>
+                );
+              })}
               <MethodChip active={method === "all"} accent="#ffffff" onClick={() => chooseMethod("all")}>
                 <Layers size={14} /> Compare all
               </MethodChip>
@@ -289,17 +312,23 @@ function MethodChip({
   accent,
   onClick,
   children,
+  disabled = false,
+  title,
 }: {
   active: boolean;
   accent: string;
   onClick: () => void;
   children: ReactNode;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium transition ${
+      disabled={disabled}
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
         active ? "text-ink-950" : "border-white/10 text-slate-300 hover:border-white/25 hover:text-white"
       }`}
       style={active ? { backgroundColor: accent, borderColor: accent } : undefined}
@@ -333,6 +362,16 @@ function SingleResult({ response }: { response: DetectionResponse }) {
           <span>{info?.family}</span>
         </div>
       </div>
+      {response.source === "api" && result.debug && Object.keys(result.debug).length > 0 && (
+        <dl className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
+          {Object.entries(result.debug).map(([k, v]) => (
+            <div key={k} className="rounded-xl bg-white/[0.03] px-3 py-2">
+              <dt className="text-[10px] tracking-widest text-slate-500 uppercase">{prettyLabel(k)}</dt>
+              <dd className="font-mono text-sm text-slate-200">{String(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </motion.div>
   );
 }
