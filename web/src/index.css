@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-ink-950: #03060a;
+  --color-ink-900: #070c12;
+  --color-ink-800: #0d151e;
+  --color-ink-700: #16212c;
+
+  --color-on: #34f5a0;
+  --color-on-soft: #9dffd0;
+  --color-off: #ff4d6d;
+  --color-signal: #38bdf8;
+  --color-amber: #fbbf24;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-ink-950);
+  color: #e6edf3;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-on) 35%, transparent);
+}
+
+@utility glass {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.02));
+  border: 1px solid rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(16px);
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, #ffffff 10%, var(--color-on-soft) 45%, var(--color-signal) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow-on {
+  box-shadow:
+    0 0 24px color-mix(in oklab, var(--color-on) 55%, transparent),
+    0 0 80px color-mix(in oklab, var(--color-on) 25%, transparent);
+}
+
+@utility glow-off {
+  box-shadow:
+    0 0 24px color-mix(in oklab, var(--color-off) 45%, transparent),
+    0 0 80px color-mix(in oklab, var(--color-off) 18%, transparent);
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@utility animate-scan {
+  animation: scan 1.4s linear infinite;
+}

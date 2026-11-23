@@ -99,6 +99,21 @@ uv run python scripts/generate_dataset.py --config configs/dataset/pcb_1m.yaml
 uv run python scripts/make_samples.py --dataset data/generated_pcb_1m   # refresh samples + grid
 ```
 
+## Web UI
+
+A React single-page app in [`web/`](web) with five sections: hero, live detection (upload or pick a sample, run one detector or all five), webcam live mode, dataset explorer, and a method comparison board.
+
+![Hero](docs/images/ui_hero.png)
+![Live detection, all methods compared](docs/images/ui_detect.png)
+
+```bash
+cd web
+npm install
+npm run dev        # http://127.0.0.1:5173
+```
+
+The UI talks only to the REST API (`/api/v1/health`, `/api/v1/detect`), proxied to `http://127.0.0.1:8000`; set `LED_API_URL` to point elsewhere. When the API is not reachable it switches to **Demo mode**: results are simulated, do not look at the image, and are labelled as such. The comparison board shows illustrative target numbers until the benchmark produces measured ones.
+
 ## Running the API
 
 > Available from Phase 8.
