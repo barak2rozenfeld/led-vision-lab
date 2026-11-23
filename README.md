@@ -88,6 +88,7 @@ LED images are generated procedurally: 14 LED colors, 6 shapes (round, square, r
 | Config | Scenes | Export sizes (px) | Images | Focus |
 |--------|-------:|-------------------|-------:|-------|
 | `configs/dataset/default.yaml` | 100 | 64, 128, 224, 256 | 400 | Quick smoke run |
+| `configs/dataset/pcb_20k.yaml` | 20,000 | 128, 224 | 40,000 | Evaluation / Colab set, same mix as `pcb_1m` |
 | `configs/dataset/large_scale.yaml` | 50,000 | 64, 128, 224, 256 | 200,000 | General mix |
 | `configs/dataset/pcb_1m.yaml` | 250,000 | 64, 128, 224, 256 | 1,000,000 | ~65 % PCB backgrounds |
 | `configs/dataset/high_res.yaml` | 10,000 | 512, 1024, 2048 | 30,000 | High-resolution |
@@ -95,9 +96,22 @@ LED images are generated procedurally: 14 LED colors, 6 shapes (round, square, r
 Generated datasets are not committed. Small samples live in [`data/samples/images`](data/samples/images).
 
 ```bash
-uv run python scripts/generate_dataset.py --config configs/dataset/pcb_1m.yaml
-uv run python scripts/make_samples.py --dataset data/generated_pcb_1m   # refresh samples + grid
+uv run python scripts/generate_dataset.py --config configs/dataset/pcb_20k.yaml
+uv run python scripts/make_samples.py --dataset data/generated_20k --size 224   # refresh samples + grid
 ```
+
+## Where the numbers come from
+
+Every statistic shown in the UI or served by the API is computed by a script and stored as JSON with its provenance (timestamp, git commit, machine, Python version):
+
+| Numbers | Produced by | Stored in |
+|---------|-------------|-----------|
+| Dataset composition (scenes, ON/OFF, splits, backgrounds, difficulty) | `scripts/compute_dataset_stats.py --dataset data/generated_20k` — counts `metadata.csv` | `artifacts/dataset/stats.json` |
+| Detector accuracy, F1, false ON/OFF, latency, per-difficulty and per-surface breakdowns | `scripts/run_benchmark.py --dataset data/generated_20k --split test` | `artifacts/benchmarks/summary.json` |
+| HSV thresholds | `scripts/calibrate_hsv.py --dataset data/generated_20k` — grid search on the **train** split only | `configs/detectors/hsv.yaml` |
+| Error analysis grids | `scripts/error_gallery.py --dataset data/generated_20k --split val` | `artifacts/benchmarks/errors_*.jpg` |
+
+The test split is never used for calibration or training. The two JSON reports are committed, so the UI shows measured numbers even without the API.
 
 ## Web UI
 
@@ -112,23 +126,34 @@ npm install
 npm run dev        # http://127.0.0.1:5173
 ```
 
-The UI talks only to the REST API (`/api/v1/health`, `/api/v1/detect`), proxied to `http://127.0.0.1:8000`; set `LED_API_URL` to point elsewhere. When the API is not reachable it switches to **Demo mode**: results are simulated, do not look at the image, and are labelled as such. The comparison board shows illustrative target numbers until the benchmark produces measured ones.
+The UI talks only to the REST API, proxied to `http://127.0.0.1:8000`; set `LED_API_URL` to point elsewhere. When the API is not reachable it switches to **Demo mode**: detections are simulated, do not look at the image, and are labelled as such. Dataset and benchmark panels always show measured numbers (live from the API, or the committed snapshot) with a "where these numbers come from" note.
 
 ## Running the API
 
-> Available from Phase 8.
+From the repository root:
 
 ```bash
-uvicorn led_vision.api.app:app --reload
+uv run uvicorn led_vision.api.app:create_default_app --factory --port 8000
+```
+
+Interactive docs: <http://127.0.0.1:8000/docs>. Settings (upload limits, accepted types, artifact paths) are in `configs/api.yaml`.
+
+```bash
+curl -F "image=@data/samples/images/<file>.jpg" -F "method=hsv" http://127.0.0.1:8000/api/v1/detect
 ```
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/detect` | Detect LED state |
-| POST | `/api/v1/compare` | Compare all detectors |
+| GET | `/api/v1/health` | Health check and ready methods |
+| GET | `/api/v1/methods` | All methods with status: `ready`, `not_trained`, `planned` |
+| POST | `/api/v1/detect` | Multipart `image` + `method` (default `hsv`) → `DetectionResult` |
+| POST | `/api/v1/compare` | Multipart `image` → results of every ready method |
+| GET | `/api/v1/dataset/stats` | Dataset composition report |
+| GET | `/api/v1/benchmark` | Latest benchmark report |
+
+Errors are JSON `{"detail": "..."}`: 415 unsupported type, 413 too large, 400 corrupt image, 404 unknown method or missing report, 503 method not trained yet.
 
 ## Core Research Question
 
