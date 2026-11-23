@@ -1,0 +1,152 @@
+# LED Vision Lab — 20K-scene evaluation / Colab dataset
+# Same distribution and seed as pcb_1m.yaml, smaller and only two export sizes:
+#   128 for HSV / template / KNN / CNN, 224 for YOLO.
+# 20 000 scenes x 2 sizes = 40 000 images (~0.5 GB), a few minutes on 4 cores.
+#
+# Run:
+#   uv run python scripts/generate_dataset.py --config configs/dataset/pcb_20k.yaml
+
+seed: 77
+total: 20000
+master_size: 256        # matches largest export — fast rendering
+image_format: jpg
+image_quality: 92
+
+n_workers: 4
+
+export_sizes:
+  - 128
+  - 224
+
+output_dir: data/generated_20k
+
+class_balance: balanced
+
+split:
+  train: 0.70
+  val:   0.15
+  test:  0.15
+
+led:
+  colors:
+    - red
+    - green
+    - yellow
+    - blue
+    - white
+    - orange
+    - purple
+    - cyan
+    - magenta
+    - amber
+    - warm_white
+    - cool_white
+    - lime_green
+    - uv_violet
+  shapes:
+    - round
+    - square
+    - rectangular
+    - dome
+    - dome_side
+    - smd
+  lens_types:
+    - clear
+    - diffused
+  brightness_range:      [0.05, 1.0]
+  size_range:            [0.04, 0.22]
+  position_margin:       0.05
+  glow_radius_range:     [0.6, 3.0]
+  halo_intensity_range:  [0.1, 1.0]
+
+multi_led:
+  single: 0.55
+  two:    0.20
+  four:   0.13
+  row:    0.08
+  grid:   0.04
+  mixed_states: true
+
+# ──────────────────────────────────────────────
+# Background weights — ~65 % PCB family
+# ──────────────────────────────────────────────
+backgrounds:
+  pcb:             0.22   # classic green PCB
+  blue_pcb:        0.12   # blue PCB
+  realistic_pcb:   0.22   # detailed PCB with ICs and resistors
+  aluminum_pcb:    0.10   # metal-core PCB
+  dark_enclosure:  0.07   # PCBs inside dark electronics boxes
+  light_enclosure: 0.05   # PCBs inside light-colored boxes
+  black_plastic:   0.05
+  gray_plastic:    0.04
+  metal:           0.04
+  brushed_metal:   0.03
+  textured:        0.02
+  gradient:        0.02
+  plain:           0.01
+  white_studio:    0.01
+  white_plastic:   0.00   # unused in this config
+
+ambient:
+  dark_room:     0.08
+  normal_indoor: 0.35
+  bright_office: 0.18
+  directional:   0.18
+  low_light:     0.09
+  warm:          0.05
+  cool:          0.04
+  backlight:     0.03
+
+glare:
+  none:               0.48
+  small_highlight:    0.22
+  strong_glare:       0.10
+  reflection_near:    0.12
+  reflection_overlap: 0.05
+  glossy:             0.03
+
+occlusion:
+  none:       0.74
+  cable:      0.09
+  label:      0.08
+  shadow:     0.05
+  panel_edge: 0.04
+
+false_positive:
+  enabled: true
+  rate:    0.05
+  types:
+    - colored_screw
+    - reflection_spot
+    - printed_circle
+    - colored_button
+    - display_pixel
+    - specular_highlight
+
+camera:
+  noise_sigma_range:        [0.0, 20.0]
+  blur_sigma_range:         [0.0, 3.0]
+  motion_blur_prob:         0.10
+  motion_blur_length_range: [3, 15]
+  chromatic_shift_range:    [0.0, 3.0]
+  gamma_range:              [0.7, 1.5]
+  white_balance_shift:      0.10
+  jpeg_artifact_prob:       0.10
+  jpeg_quality_range:       [60, 85]
+
+difficulty:
+  easy:    0.25
+  medium:  0.35
+  hard:    0.25
+  extreme: 0.15
+
+groups:
+  clean_easy:            0.18
+  lighting_variation:    0.15
+  camera_variation:      0.14
+  geometry_perspective:  0.10
+  glare_reflections:     0.12
+  blur_noise:            0.10
+  difficult_on_off:      0.11
+  false_positives:       0.05
+  occlusion:             0.05

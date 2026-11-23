@@ -117,6 +117,7 @@ class LEDRenderer:
         cv2.circle(glow_layer, (cx, cy), glow_r, color_bgr, -1)
         sigma = glow_r * (0.6 if lens_type == "clear" else 1.2)
         k = min(self._MAX_BLUR_KERNEL, max(3, int(sigma * 4) | 1))
+        glow_layer = cv2.GaussianBlur(glow_layer, (k, k), sigma)
         result = np.clip(image.astype(np.float32) + glow_layer * halo_intensity, 0, 255)
         return result.astype(np.uint8)
 
@@ -131,6 +132,7 @@ class LEDRenderer:
         spec = np.zeros_like(image, dtype=np.float32)
         cv2.circle(spec, (hl_cx, hl_cy), hl_r, (255, 255, 255), -1)
         k = min(self._MAX_BLUR_KERNEL, max(3, hl_r | 1))
+        spec = cv2.GaussianBlur(spec, (k, k), hl_r * 0.5)
         return np.clip(image.astype(np.float32) + spec * 0.85, 0, 255).astype(np.uint8)
 
     def _scale_color(

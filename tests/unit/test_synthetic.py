@@ -368,6 +368,68 @@ class TestSceneBuilder:
         assert len(scene.leds) >= 1
         assert scene.leds[0]["state"] == "on"
 
+    def test_glare_does_not_depend_on_led_state(self) -> None:
+        """Reflections must hit OFF scenes too, or 'has glare' would reveal the label."""
+        cfg = DatasetConfig(total=4, export_sizes=[64], master_size=128)
+        cfg.false_positive.enabled = False
+        builder = SceneBuilder(cfg, np.random.default_rng(3))
+        glare = {
+            state: sum(builder.build(state, "extreme", "glare_reflections", s).glare_type != "none"
+                       for s in range(30))
+            for state in ("on", "off")
+        }
+        assert glare["off"] == glare["on"] == 30
+
+    def test_lit_led_is_not_dimmed_by_dark_room(self) -> None:
+        """Ambient light scales reflections only; a lit LED stays bright in the dark."""
+        cfg = DatasetConfig(total=4, export_sizes=[64], master_size=128)
+        cfg.false_positive.enabled = False
+        for name in ("single", "two", "four", "row", "grid"):
+            setattr(cfg.multi_led, name, 1.0 if name == "single" else 0.0)
+        for name in cfg.ambient.__dataclass_fields__:
+            setattr(cfg.ambient, name, 1.0 if name == "dark_room" else 0.0)
+        builder = SceneBuilder(cfg, np.random.default_rng(11))
+        for seed in range(10):
+            scene = builder.build("on", "easy", "clean_easy", seed)
+            cx, cy, _ = scene.led_positions[0]
+            led_v = int(scene.image[cy, cx].max())
+            background_v = float(np.median(scene.image.max(axis=2)))
+            assert led_v > background_v + 60, (seed, led_v, background_v)
+
+
+class TestSoftLight:
+    """Glow, bloom and highlights must fall off smoothly, not be flat hard-edged discs."""
+
+    @staticmethod
+    def _radial_profile(img: np.ndarray, cx: int, cy: int, radii: range) -> list[float]:
+        v = img.max(axis=2).astype(float)
+        return [v[cy, cx + r] for r in radii]
+
+    def test_led_glow_falls_off(self) -> None:
+        renderer = LEDRenderer(np.random.default_rng(0))
+        canvas = np.zeros((256, 256, 3), np.uint8)
+        spec = LedSpec(state="on", color="green", shape="round", lens_type="clear",
+                       brightness=1.0, size_pct=0.1, pos_x=0.5, pos_y=0.5,
+                       glow_radius=2.0, halo_intensity=1.0)
+        img, cx, cy, r = renderer.render(canvas, spec)
+        profile = self._radial_profile(img, cx, cy, range(r + 2, 3 * r))
+        assert profile[0] > profile[-1] + 40
+        # A flat disc gives a long run of identical values; a real falloff keeps changing.
+        assert len(set(profile)) > len(profile) // 2
+
+    @pytest.mark.parametrize("glare_type", ["small_highlight", "strong_glare", "reflection_overlap"])
+    def test_glare_bloom_is_soft(self, glare_type: str) -> None:
+        img = apply_glare(np.zeros((256, 256, 3), np.uint8), glare_type, [(128, 128, 20)],
+                          np.random.default_rng(0))
+        assert len(np.unique(img)) > 30
+
+    def test_bloom_scale_dims_strong_glare(self) -> None:
+        black = np.zeros((256, 256, 3), np.uint8)
+        full = apply_glare(black, "strong_glare", [(128, 128, 20)], np.random.default_rng(0))
+        dim = apply_glare(black, "strong_glare", [(128, 128, 20)], np.random.default_rng(0),
+                          bloom_scale=0.1)
+        assert dim.max() < full.max() / 3
+
 
 # ---------------------------------------------------------------------------
 # DatasetGenerator (integration)

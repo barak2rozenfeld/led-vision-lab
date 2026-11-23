@@ -80,8 +80,12 @@ def apply_glare(
     glare_type: str,
     led_positions: list[tuple[int, int, int]],
     rng: np.random.Generator,
+    bloom_scale: float = 1.0,
 ) -> np.ndarray:
-    """Add glare or reflection effects around LED positions."""
+    """Add glare or reflection effects around LED positions.
+
+    bloom_scale (0..1) scales "strong_glare", which is sensor bloom from the LED's own light.
+    """
     if glare_type == "none" or not led_positions:
         return image
 
@@ -96,7 +100,7 @@ def apply_glare(
 
         elif glare_type == "strong_glare":
             bloom_r = max(4, r * 3)
-            result = _add_bloom(result, cx, cy, bloom_r, (255, 255, 255), 0.6, 1.2)
+            result = _add_bloom(result, cx, cy, bloom_r, (255, 255, 255), 0.6, 1.2 * bloom_scale)
 
         elif glare_type == "reflection_near":
             angle = rng.uniform(0, 360)
@@ -137,6 +141,7 @@ def _add_bloom(
     cv2.circle(glow, (cx, cy), radius, color, -1)
     sigma = max(1.0, radius * sigma_factor)
     k = min(_MAX_K, max(3, int(sigma * 4) | 1))
+    glow = cv2.GaussianBlur(glow, (k, k), sigma)
     return np.clip(image.astype(np.float32) + glow * intensity, 0, 255).astype(np.uint8)
 
 
@@ -290,6 +295,7 @@ def apply_false_positive(
         cv2.ellipse(glow, (cx, cy), axes, angle, 0, 360, (255, 255, 255), -1)
         sigma = size * 0.5
         k = min(_MAX_K, max(3, int(sigma * 4) | 1))
+        glow = cv2.GaussianBlur(glow, (k, k), sigma)
         result = np.clip(result.astype(np.float32) + glow * 0.75, 0, 255).astype(np.uint8)
 
     return result, cx, cy, size

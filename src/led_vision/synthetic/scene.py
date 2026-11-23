@@ -1,7 +1,7 @@
 """Scene builder — difficulty-driven composition with multi-LED, FP, and effects."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -165,6 +165,7 @@ class SceneBuilder:
             fp_type = str(self._rng.choice(cfg.false_positive.types))
             canvas, fp_cx, fp_cy, fp_r = apply_false_positive(canvas, fp_type, self._rng)
             led_positions.append((fp_cx, fp_cy, fp_r))
+            unlit = canvas
         else:
             fp_type = None
             # --- LED count ---
@@ -180,6 +181,7 @@ class SceneBuilder:
             positions_xy = _layout_positions(
                 self._rng, led_count, led_count_label, size, cfg.led.position_margin
             )
+            unlit = canvas.copy()
 
             for i, (px, py) in enumerate(positions_xy):
                 # The scene label is "on" if any LED is lit, so an "off" scene must
@@ -209,7 +211,17 @@ class SceneBuilder:
                     glow_radius=glow_r,
                     halo_intensity=halo_i,
                 )
-                canvas, cx, cy, r = self._led.render(canvas, spec)
+                if led_state == "on":
+                    # Replay the same random draws so both copies share geometry.
+                    before = self._rng.bit_generator.state
+                    canvas, cx, cy, r = self._led.render(canvas, spec)
+                    after = self._rng.bit_generator.state
+                    self._rng.bit_generator.state = before
+                    unlit, _, _, _ = self._led.render(unlit, replace(spec, state="off"))
+                    self._rng.bit_generator.state = after
+                else:
+                    canvas, cx, cy, r = self._led.render(canvas, spec)
+                    unlit, _, _, _ = self._led.render(unlit, spec)
                 led_positions.append((cx, cy, r))
                 led_meta.append({
                     "state": led_state,
@@ -228,18 +240,28 @@ class SceneBuilder:
                 })
 
         # --- Ambient lighting ---
+        # Ambient light only scales reflected light. The LEDs' own emission (scene with
+        # lit LEDs minus the same scene with every LED unlit) is added back unscaled,
+        # otherwise a lit LED in a dark room would be dimmed with the room.
+        emission = np.clip(canvas.astype(np.float32) - unlit.astype(np.float32), 0, None)
         ambient_type = _weighted_choice(self._rng, _dataclass_weights(cfg.ambient))
         ambient_factor = float(self._rng.uniform(*params["ambient_range"]))
-        canvas = apply_ambient(canvas, ambient_type, ambient_factor, self._rng)
+        lit_ambient = apply_ambient(unlit, ambient_type, ambient_factor, self._rng)
+        canvas = np.clip(lit_ambient.astype(np.float32) + emission, 0, 255).astype(np.uint8)
 
-        # --- Glare (only when there is something glowing) ---
-        on_positions = [p for p, m in zip(led_positions, led_meta)
-                        if m.get("state", "off") == "on"] if not is_fp else []
+        # --- Glare ---
+        # Room-light reflections land on lit and unlit LEDs alike; only sensor bloom
+        # needs a lit LED. Tying all glare to ON LEDs would leak the label.
+        lit = [(p, m["brightness"]) for p, m in zip(led_positions, led_meta)
+               if m.get("state") == "on"]
         glare_type = str(self._rng.choice(params["glare_types"]))
-        if on_positions:
-            canvas = apply_glare(canvas, glare_type, on_positions, self._rng)
-        else:
-            glare_type = "none"
+        if glare_type == "strong_glare" and not lit:
+            glare_type = "reflection_overlap"
+        if glare_type == "strong_glare":
+            canvas = apply_glare(canvas, glare_type, [p for p, _ in lit], self._rng,
+                                 bloom_scale=max(b for _, b in lit))
+        elif glare_type != "none":
+            canvas = apply_glare(canvas, glare_type, led_positions, self._rng)
 
         # --- Occlusion ---
         occlusion_type = str(self._rng.choice(params["occlusion_types"]))
