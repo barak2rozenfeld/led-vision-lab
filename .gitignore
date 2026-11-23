@@ -36,9 +36,11 @@ artifacts/models/*.pt
 artifacts/models/*.pkl
 artifacts/models/*.onnx
 
-# Benchmark outputs
+# Benchmark outputs — only the published summary (served by the API and bundled in the UI) is committed
 artifacts/benchmarks/*.json
 artifacts/benchmarks/*.csv
+artifacts/benchmarks/*.jpg
+!artifacts/benchmarks/summary.json
 
 # IDE
 .vscode/
