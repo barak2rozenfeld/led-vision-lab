@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import csv
 import json
+import multiprocessing as _mp
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,9 @@ from tqdm import tqdm
 from .config import DatasetConfig, load_config
 from .scene import SceneBuilder, SceneResult, _dataclass_weights, _weighted_choice
 
+# Module-level global set by _pool_init() inside each worker process.
+# None in the main process — workers access it after pool initialisation.
+_WORKER_CFG: DatasetConfig | None = None
 
 # Metadata CSV columns (order matters)
 _CSV_COLUMNS = [
@@ -40,27 +42,43 @@ _CSV_COLUMNS = [
 
 
 # ---------------------------------------------------------------------------
+# Worker pool initialiser — runs once per worker process at startup
+# ---------------------------------------------------------------------------
+
+def _pool_init(cfg_dict: dict) -> None:
+    """Load config and disable OpenCV threading once per worker process."""
+    global _WORKER_CFG
+    import cv2 as _cv2
+    _cv2.setNumThreads(1)
+    _WORKER_CFG = _cfg_from_dict(cfg_dict)
+
+
+# ---------------------------------------------------------------------------
 # Top-level worker function (must be at module scope for Windows pickling)
 # ---------------------------------------------------------------------------
 
 def _scene_worker(args: tuple) -> list[dict[str, Any]]:
-    """Generate one scene and save all export sizes. Returns CSV rows."""
-    import cv2 as _cv2
-    # Prevent OpenCV's internal TBB/OpenMP thread pool from spawning extra
-    # threads inside worker processes — avoids deadlocks on Windows (spawn).
-    _cv2.setNumThreads(1)
+    """Generate one scene, save all export sizes.  Returns CSV rows.
 
-    (
-        cfg_path_or_dict,
-        idx, split, state, difficulty, group, scene_seed,
-        out_dir_str,
-    ) = args
+    Parallel path: config pre-loaded by _pool_init; args are minimal 7-tuple.
+    Single-threaded path: cfg_dict passed as first element (8-tuple).
+    """
+    global _WORKER_CFG
 
-    # Reconstruct config inside the worker process
-    if isinstance(cfg_path_or_dict, dict):
-        cfg = _cfg_from_dict(cfg_path_or_dict)
+    if _WORKER_CFG is not None:
+        # Parallel path — config already in process memory
+        idx, split, state, difficulty, group, scene_seed, out_dir_str = args
+        cfg = _WORKER_CFG
     else:
-        cfg = load_config(Path(cfg_path_or_dict))
+        # Single-threaded fallback — config dict or path in args
+        import cv2 as _cv2
+        _cv2.setNumThreads(1)
+        cfg_path_or_dict, idx, split, state, difficulty, group, scene_seed, out_dir_str = args
+        cfg = (
+            _cfg_from_dict(cfg_path_or_dict)
+            if isinstance(cfg_path_or_dict, dict)
+            else load_config(Path(cfg_path_or_dict))
+        )
 
     out_dir = Path(out_dir_str)
     rng = np.random.default_rng(scene_seed)
@@ -102,34 +120,35 @@ class DatasetGenerator:
         meta_path = out_dir / "metadata.csv"
         start = time.time()
 
-        # Serialize config to dict for pickling across process boundaries
-        cfg_dict = _cfg_to_dict(cfg)
-
-        worker_args = [
-            (
-                cfg_dict,
-                idx, split, state, difficulty, group,
-                int(self._rng.integers(0, 2**31)),
-                str(out_dir),
-            )
-            for idx, (split, state, difficulty, group) in enumerate(assignments)
-        ]
-
         n_workers = max(1, cfg.n_workers)
+        out_dir_str = str(out_dir)
+        seeds = [int(self._rng.integers(0, 2**31)) for _ in assignments]
 
         with meta_path.open("w", newline="", encoding="utf-8") as csv_f:
             writer = csv.DictWriter(csv_f, fieldnames=_CSV_COLUMNS)
             writer.writeheader()
 
             if n_workers == 1:
-                # Single-threaded path (simpler, no pickling overhead)
-                for args in tqdm(worker_args, desc="Generating scenes", unit="scene"):
+                # Single-threaded path — pass cfg_dict inline (no pool init)
+                cfg_dict = _cfg_to_dict(cfg)
+                st_args = [
+                    (cfg_dict, idx, split, state, difficulty, group, seed, out_dir_str)
+                    for idx, ((split, state, difficulty, group), seed)
+                    in enumerate(zip(assignments, seeds))
+                ]
+                for args in tqdm(st_args, desc="Generating scenes", unit="scene"):
                     for row in _scene_worker(args):
                         writer.writerow(row)
                     csv_f.flush()
             else:
-                # Parallel path
-                self._run_parallel(worker_args, writer, csv_f, n_workers)
+                # Parallel path — cfg loaded once per worker via _pool_init
+                cfg_dict = _cfg_to_dict(cfg)
+                par_args = [
+                    (idx, split, state, difficulty, group, seed, out_dir_str)
+                    for idx, ((split, state, difficulty, group), seed)
+                    in enumerate(zip(assignments, seeds))
+                ]
+                self._run_parallel(par_args, cfg_dict, writer, csv_f, n_workers)
 
         elapsed = time.time() - start
         total_files = cfg.total * len(cfg.export_sizes)
@@ -144,19 +163,28 @@ class DatasetGenerator:
 
     def _run_parallel(
         self,
-        worker_args: list[tuple],
+        par_args: list[tuple],
+        cfg_dict: dict,
         writer: csv.DictWriter,
         csv_f: Any,
         n_workers: int,
     ) -> None:
-        total = len(worker_args)
-        # chunksize=1: each scene is submitted individually so the progress bar
-        # updates after every scene. IPC overhead is negligible vs per-scene cost.
-        chunksize = 1
+        total = len(par_args)
+        # imap_unordered yields results lazily — memory stays bounded regardless
+        # of dataset size.  chunksize batches tasks to reduce IPC round-trips
+        # while still giving a responsive progress bar.
+        chunksize = max(1, min(50, total // (n_workers * 20)))
 
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        ctx = _mp.get_context("spawn")
+        with ctx.Pool(
+            processes=n_workers,
+            initializer=_pool_init,
+            initargs=(cfg_dict,),
+        ) as pool:
             with tqdm(total=total, desc="Generating scenes", unit="scene") as bar:
-                for rows in pool.map(_scene_worker, worker_args, chunksize=chunksize):
+                for rows in pool.imap_unordered(
+                    _scene_worker, par_args, chunksize=chunksize
+                ):
                     for row in rows:
                         writer.writerow(row)
                     csv_f.flush()
