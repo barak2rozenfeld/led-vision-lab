@@ -92,6 +92,22 @@ class TestBackgroundGenerator:
         # At least the first channels should differ
         assert not all(np.array_equal(imgs[0], img) for img in imgs[1:])
 
+    @pytest.mark.parametrize("style", ["pcb", "blue_pcb", "realistic_pcb", "aluminum_pcb"])
+    def test_drawn_details_are_visible(self, style: str) -> None:
+        """Traces, pads and components must land on the image, not on a discarded copy."""
+        for seed in range(5):
+            img = BackgroundGenerator(np.random.default_rng(seed)).generate(style, 256)
+            # Pure sensor noise is ~3-6 std; drawn structure pushes the 99th percentile
+            # of the deviation from the median well beyond that.
+            dev = np.abs(img.astype(np.float32) - np.median(img, axis=(0, 1)))
+            assert np.percentile(dev, 99) > 25, f"{style} seed={seed} has no visible detail"
+
+    @pytest.mark.parametrize("style", ["pcb", "realistic_pcb"])
+    def test_green_pcb_not_near_black(self, style: str) -> None:
+        for seed in range(5):
+            img = BackgroundGenerator(np.random.default_rng(seed)).generate(style, 128)
+            assert img[:, :, 1].mean() > 70, f"{style} seed={seed} solder mask too dark"
+
 
 # ---------------------------------------------------------------------------
 # LEDRenderer tests
@@ -332,6 +348,20 @@ class TestSceneBuilder:
         builder = SceneBuilder(cfg, np.random.default_rng(7))
         scene = builder.build("on", "easy", "clean_easy", 7)
         assert len(scene.led_positions) == 2
+
+    @pytest.mark.parametrize("layout", ["two", "four", "row", "grid"])
+    def test_off_multi_led_scene_stays_off(self, layout: str) -> None:
+        """Mixed states must not turn an OFF scene into an ON-labelled one."""
+        cfg = DatasetConfig(total=4, export_sizes=[64], master_size=128)
+        for name in ("single", "two", "four", "row", "grid"):
+            setattr(cfg.multi_led, name, 1.0 if name == layout else 0.0)
+        cfg.multi_led.mixed_states = True
+        cfg.false_positive.enabled = False
+        builder = SceneBuilder(cfg, np.random.default_rng(5))
+        for seed in range(20):
+            scene = builder.build("off", "easy", "clean_easy", seed)
+            assert scene.state == "off"
+            assert all(m["state"] == "off" for m in scene.leds)
 
     def test_on_scene_has_led_metadata(self) -> None:
         scene = self.builder.build("on", "easy", "clean_easy", 1)

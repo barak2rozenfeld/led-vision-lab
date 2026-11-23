@@ -63,7 +63,7 @@ class BackgroundGenerator:
             x2 = int(self._rng.integers(0, size))
             y2 = int(self._rng.integers(0, size))
             scratch_v = int(self._rng.integers(base_v - 20, base_v + 20))
-            cv2.line(img.astype(np.uint8), (x1, y1), (x2, y2), (scratch_v,) * 3, 1)
+            cv2.line(img, (x1, y1), (x2, y2), (scratch_v,) * 3, 1)
         return np.clip(img, 0, 255).astype(np.uint8)
 
     def _white_plastic(self, size: int) -> np.ndarray:
@@ -94,7 +94,7 @@ class BackgroundGenerator:
         for i in range(n_slots):
             y = int((i + 0.5) * size / n_slots)
             slot_v = min(255, b_base + int(self._rng.integers(3, 12)))
-            cv2.line(img.astype(np.uint8), (10, y), (size - 10, y), (slot_v,) * 3, 1)
+            cv2.line(img, (10, y), (size - 10, y), (slot_v,) * 3, 1)
         return np.clip(img, 0, 255).astype(np.uint8)
 
     def _light_enclosure(self, size: int) -> np.ndarray:
@@ -113,7 +113,7 @@ class BackgroundGenerator:
         if self._rng.random() > 0.5:
             line_v = max(0, base_b - 20)
             midline = size // 2
-            cv2.line(img.astype(np.uint8), (0, midline), (size, midline), (line_v,) * 3, 1)
+            cv2.line(img, (0, midline), (size, midline), (line_v,) * 3, 1)
         return np.clip(img, 0, 255).astype(np.uint8)
 
     # ------------------------------------------------------------------
@@ -121,77 +121,97 @@ class BackgroundGenerator:
     # ------------------------------------------------------------------
 
     def _pcb(self, size: int) -> np.ndarray:
-        base_g = int(self._rng.integers(20, 55))
-        base_b = int(self._rng.integers(15, 40))
-        img = np.zeros((size, size, 3), dtype=np.float32)
-        img[:, :, 0] = base_b
-        img[:, :, 1] = base_g
-        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
-        for ch in range(3):
-            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
-        self._add_pcb_traces(img, size, trace_color=(0, int(self._rng.integers(60, 100)), 0))
+        mask = self._solder_mask_green()
+        img = self._solder_mask_base(size, mask)
+        self._add_pcb_traces(img, size, trace_color=self._trace_color(mask))
         return np.clip(img, 0, 255).astype(np.uint8)
 
     def _blue_pcb(self, size: int) -> np.ndarray:
-        base_b = int(self._rng.integers(60, 110))
-        img = np.zeros((size, size, 3), dtype=np.float32)
-        img[:, :, 0] = base_b
-        img[:, :, 1] = int(base_b * 0.35)
-        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
-        for ch in range(3):
-            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
-        self._add_pcb_traces(img, size, trace_color=(int(base_b + 40), int(base_b * 0.5), 0))
+        base_b = int(self._rng.integers(110, 170))
+        mask = (base_b, int(base_b * 0.45), int(base_b * 0.15))
+        img = self._solder_mask_base(size, mask)
+        self._add_pcb_traces(img, size, trace_color=self._trace_color(mask))
         return np.clip(img, 0, 255).astype(np.uint8)
 
     def _realistic_pcb(self, size: int) -> np.ndarray:
         # Detailed PCB with ICs, resistors, capacitors
-        base_g = int(self._rng.integers(18, 48))
-        img = np.zeros((size, size, 3), dtype=np.float32)
-        img[:, :, 1] = base_g
-        noise = self._rng.normal(0, 2.5, (size, size)).astype(np.float32)
-        for ch in range(3):
-            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
-        self._add_pcb_traces(img, size, trace_color=(0, int(base_g + 40), 0))
-        # IC packages
+        s = size / 256
+        mask = self._solder_mask_green()
+        img = self._solder_mask_base(size, mask)
+        self._add_pcb_traces(img, size, trace_color=self._trace_color(mask))
+        # IC packages: black epoxy body with silver pins along the long sides
         n_ics = int(self._rng.integers(1, 4))
         for _ in range(n_ics):
-            ix = int(self._rng.integers(5, size - 30))
-            iy = int(self._rng.integers(5, size - 20))
-            iw = int(self._rng.integers(15, 35))
-            ih = int(self._rng.integers(10, 25))
-            cv2.rectangle(img.astype(np.uint8), (ix, iy), (ix + iw, iy + ih), (30, 30, 30), -1)
-            cv2.rectangle(img.astype(np.uint8), (ix, iy), (ix + iw, iy + ih), (50, 50, 50), 1)
-        # SMD resistors/caps
-        n_components = int(self._rng.integers(3, 10))
+            iw = int(self._rng.integers(20, 45) * s)
+            ih = int(self._rng.integers(12, 28) * s)
+            ix = int(self._rng.integers(0, max(1, size - iw)))
+            iy = int(self._rng.integers(0, max(1, size - ih)))
+            pin_len = max(2, int(4 * s))
+            pin_w = max(1, int(2 * s))
+            for px in range(ix + pin_w, ix + iw - pin_w, pin_w * 3):
+                cv2.rectangle(img, (px, iy - pin_len), (px + pin_w, iy + ih + pin_len),
+                              (175, 175, 180), -1)
+            body_v = int(self._rng.integers(18, 40))
+            cv2.rectangle(img, (ix, iy), (ix + iw, iy + ih), (body_v,) * 3, -1)
+            cv2.circle(img, (ix + max(2, int(4 * s)), iy + max(2, int(4 * s))),
+                       max(1, int(2 * s)), (body_v + 25,) * 3, -1)
+        # SMD resistors (black) and capacitors (tan) with tinned end caps
+        n_components = int(self._rng.integers(4, 12))
         for _ in range(n_components):
-            cx = int(self._rng.integers(2, size - 10))
-            cy = int(self._rng.integers(2, size - 8))
-            w_comp = int(self._rng.integers(4, 10))
-            h_comp = int(self._rng.integers(2, 5))
-            comp_v = int(self._rng.integers(80, 160))
-            cv2.rectangle(img.astype(np.uint8), (cx, cy), (cx + w_comp, cy + h_comp),
-                          (comp_v, comp_v, comp_v), -1)
+            w_comp = max(3, int(self._rng.integers(6, 12) * s))
+            h_comp = max(2, int(self._rng.integers(3, 6) * s))
+            cx = int(self._rng.integers(0, max(1, size - w_comp)))
+            cy = int(self._rng.integers(0, max(1, size - h_comp)))
+            body = (25, 25, 25) if self._rng.random() < 0.5 else (90, 140, 170)
+            cv2.rectangle(img, (cx, cy), (cx + w_comp, cy + h_comp), body, -1)
+            cap = max(1, w_comp // 5)
+            for x0 in (cx, cx + w_comp - cap):
+                cv2.rectangle(img, (x0, cy), (x0 + cap, cy + h_comp), (190, 190, 195), -1)
         return np.clip(img, 0, 255).astype(np.uint8)
 
+    def _solder_mask_green(self) -> tuple[int, int, int]:
+        """BGR colour of typical green FR4 solder mask (mid-tone, not near-black)."""
+        g = int(self._rng.integers(85, 150))
+        return (int(g * self._rng.uniform(0.30, 0.55)), g, int(g * self._rng.uniform(0.15, 0.40)))
+
+    def _solder_mask_base(self, size: int, mask: tuple[int, int, int]) -> np.ndarray:
+        img = np.empty((size, size, 3), dtype=np.float32)
+        img[:] = mask
+        noise = self._rng.normal(0, 3, (size, size)).astype(np.float32)
+        for ch in range(3):
+            img[:, :, ch] = np.clip(img[:, :, ch] + noise, 0, 255)
+        return img
+
+    @staticmethod
+    def _trace_color(mask: tuple[int, int, int]) -> tuple[int, int, int]:
+        """Copper under solder mask reads as a lighter shade of the mask colour."""
+        return tuple(min(255, int(c * 1.35 + 12)) for c in mask)  # type: ignore[return-value]
+
     def _add_pcb_traces(self, img: np.ndarray, size: int, trace_color: tuple[int, int, int]) -> None:
-        n_horiz = int(self._rng.integers(3, 8))
+        s = size / 256
+        thickness = max(1, int(round(self._rng.uniform(1, 3) * s)))
+        n_horiz = int(self._rng.integers(4, 10))
         for _ in range(n_horiz):
             y = int(self._rng.integers(0, size))
             x1, x2 = sorted(self._rng.integers(0, size, size=2).tolist())
-            cv2.line(img.astype(np.uint8), (x1, y), (x2, y), trace_color, 1)
-        n_vert = int(self._rng.integers(3, 8))
+            cv2.line(img, (x1, y), (x2, y), trace_color, thickness)
+        n_vert = int(self._rng.integers(4, 10))
         for _ in range(n_vert):
             x = int(self._rng.integers(0, size))
             y1, y2 = sorted(self._rng.integers(0, size, size=2).tolist())
-            cv2.line(img.astype(np.uint8), (x, y1), (x, y2), trace_color, 1)
-        # Pads
-        n_pads = int(self._rng.integers(4, 12))
+            cv2.line(img, (x, y1), (x, y2), trace_color, thickness)
+        # Exposed pads / vias: gold (ENIG) or silver (HASL) finish
+        gold = self._rng.random() < 0.5
+        n_pads = int(self._rng.integers(6, 16))
         for _ in range(n_pads):
             px = int(self._rng.integers(0, size))
             py = int(self._rng.integers(0, size))
-            pad_r = int(self._rng.integers(2, 6))
-            pad_v = int(self._rng.integers(160, 200))
-            cv2.circle(img.astype(np.uint8), (px, py), pad_r, (pad_v, pad_v - 20, 0), -1)
+            pad_r = max(1, int(self._rng.integers(2, 6) * s))
+            v = int(self._rng.integers(160, 210))
+            color = (int(v * 0.35), int(v * 0.80), v) if gold else (v, v, v)
+            cv2.circle(img, (px, py), pad_r, color, -1)
+            if pad_r >= 3:
+                cv2.circle(img, (px, py), max(1, pad_r // 3), (15, 15, 15), -1)
 
     # ------------------------------------------------------------------
     # Metal styles
@@ -257,7 +277,7 @@ class BackgroundGenerator:
             px = int(self._rng.integers(0, size))
             py = int(self._rng.integers(0, size))
             patch_v = int(self._rng.integers(base_v - 20, base_v + 20))
-            cv2.circle(img.astype(np.uint8), (px, py), int(self._rng.integers(4, 12)),
+            cv2.circle(img, (px, py), max(1, int(self._rng.integers(4, 12) * size / 256)),
                        (patch_v,) * 3, -1)
         return np.clip(img, 0, 255).astype(np.uint8)
 

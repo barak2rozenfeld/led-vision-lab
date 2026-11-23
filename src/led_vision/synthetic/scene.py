@@ -182,8 +182,9 @@ class SceneBuilder:
             )
 
             for i, (px, py) in enumerate(positions_xy):
-                # Per-LED state (mixed states allowed)
-                if i == 0 or not cfg.multi_led.mixed_states:
+                # The scene label is "on" if any LED is lit, so an "off" scene must
+                # keep every LED off; only "on" scenes may mix states.
+                if i == 0 or not cfg.multi_led.mixed_states or target_state == "off":
                     led_state = target_state
                 else:
                     led_state = str(self._rng.choice(["on", "off"]))
