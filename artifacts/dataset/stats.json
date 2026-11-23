@@ -1,0 +1,177 @@
+{
+  "dataset": "generated_20k",
+  "scenes": 20000,
+  "images": 40000,
+  "images_by_size": {
+    "128": 20000,
+    "224": 20000
+  },
+  "config": {
+    "seed": 77,
+    "total": 20000,
+    "master_size": 256,
+    "export_sizes": [
+      128,
+      224
+    ],
+    "class_balance": "balanced"
+  },
+  "counts": {
+    "state": {
+      "off": 10000,
+      "on": 10000
+    },
+    "split": {
+      "train": 14000,
+      "test": 3000,
+      "val": 3000
+    },
+    "difficulty": {
+      "medium": 6969,
+      "easy": 5080,
+      "hard": 4887,
+      "extreme": 3064
+    },
+    "background": {
+      "realistic_pcb": 4387,
+      "pcb": 4343,
+      "blue_pcb": 2356,
+      "aluminum_pcb": 2082,
+      "dark_enclosure": 1449,
+      "light_enclosure": 986,
+      "black_plastic": 985,
+      "gray_plastic": 806,
+      "metal": 795,
+      "brushed_metal": 619,
+      "gradient": 413,
+      "textured": 401,
+      "white_studio": 192,
+      "plain": 186
+    },
+    "group": {
+      "clean_easy": 3661,
+      "lighting_variation": 3035,
+      "camera_variation": 2766,
+      "glare_reflections": 2327,
+      "difficult_on_off": 2189,
+      "blur_noise": 2052,
+      "geometry_perspective": 2005,
+      "false_positives": 1000,
+      "occlusion": 965
+    },
+    "led_color": {
+      "yellow": 1461,
+      "cool_white": 1459,
+      "white": 1450,
+      "purple": 1423,
+      "orange": 1411,
+      "magenta": 1405,
+      "amber": 1387,
+      "cyan": 1384,
+      "uv_violet": 1382,
+      "red": 1360,
+      "blue": 1351,
+      "warm_white": 1345,
+      "green": 1342,
+      "lime_green": 1334,
+      "": 506
+    },
+    "led_shape": {
+      "square": 3296,
+      "dome": 3258,
+      "dome_side": 3258,
+      "round": 3245,
+      "rectangular": 3221,
+      "smd": 3216,
+      "": 506
+    },
+    "led_lens_type": {
+      "clear": 9785,
+      "diffused": 9709,
+      "": 506
+    },
+    "led_count": {
+      "1": 11283,
+      "4": 4845,
+      "2": 3872
+    },
+    "ambient_type": {
+      "normal_indoor": 7060,
+      "directional": 3720,
+      "bright_office": 3567,
+      "low_light": 1795,
+      "dark_room": 1547,
+      "warm": 963,
+      "cool": 789,
+      "backlight": 559
+    },
+    "glare_type": {
+      "none": 10957,
+      "small_highlight": 3550,
+      "reflection_overlap": 2139,
+      "reflection_near": 1244,
+      "glossy": 1057,
+      "strong_glare": 1053
+    },
+    "occlusion_type": {
+      "none": 10946,
+      "shadow": 4329,
+      "label": 2063,
+      "cable": 1913,
+      "panel_edge": 749
+    },
+    "false_positive": {
+      "False": 19494,
+      "True": 506
+    }
+  },
+  "cross_tabs": {
+    "difficulty_x_state": {
+      "medium|on": 3508,
+      "medium|off": 3461,
+      "easy|on": 2550,
+      "easy|off": 2530,
+      "hard|off": 2453,
+      "hard|on": 2434,
+      "extreme|off": 1556,
+      "extreme|on": 1508
+    },
+    "background_x_state": {
+      "realistic_pcb|on": 2217,
+      "pcb|off": 2208,
+      "realistic_pcb|off": 2170,
+      "pcb|on": 2135,
+      "blue_pcb|on": 1202,
+      "blue_pcb|off": 1154,
+      "aluminum_pcb|on": 1068,
+      "aluminum_pcb|off": 1014,
+      "dark_enclosure|off": 740,
+      "dark_enclosure|on": 709,
+      "black_plastic|off": 540,
+      "light_enclosure|on": 504,
+      "light_enclosure|off": 482,
+      "black_plastic|on": 445,
+      "gray_plastic|on": 417,
+      "metal|off": 409,
+      "gray_plastic|off": 389,
+      "metal|on": 386,
+      "brushed_metal|on": 314,
+      "brushed_metal|off": 305,
+      "gradient|on": 219,
+      "textured|off": 206,
+      "textured|on": 195,
+      "gradient|off": 194,
+      "white_studio|off": 100,
+      "plain|on": 97,
+      "white_studio|on": 92,
+      "plain|off": 89
+    }
+  },
+  "provenance": {
+    "generated_at": "2026-11-23T12:12:13+00:00",
+    "git_commit": "2b749a56d",
+    "git_dirty": false,
+    "machine": "Windows AMD64 \u00b7 Intel64 Family 6 Model 78 Stepping 3, GenuineIntel",
+    "python": "3.13.7"
+  }
+}

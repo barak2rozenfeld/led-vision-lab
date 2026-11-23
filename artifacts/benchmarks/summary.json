@@ -1,0 +1,183 @@
+{
+  "evaluated_images": 3000,
+  "missing_images": 0,
+  "methods": {
+    "hsv": {
+      "overall": {
+        "n": 3000,
+        "accuracy": 0.6413,
+        "precision": 0.6228,
+        "recall": 0.6983,
+        "f1": 0.6584,
+        "false_on": 628,
+        "false_off": 448,
+        "confusion": {
+          "tp": 1037,
+          "tn": 887,
+          "fp": 628,
+          "fn": 448
+        }
+      },
+      "latency": {
+        "mean_ms": 4.066,
+        "p50_ms": 2.978,
+        "p95_ms": 9.159,
+        "max_ms": 32.152
+      },
+      "by_difficulty": {
+        "easy": {
+          "n": 744,
+          "accuracy": 0.7769,
+          "precision": 0.7646,
+          "recall": 0.8053,
+          "f1": 0.7844,
+          "false_on": 93,
+          "false_off": 73,
+          "confusion": {
+            "tp": 302,
+            "tn": 276,
+            "fp": 93,
+            "fn": 73
+          }
+        },
+        "extreme": {
+          "n": 451,
+          "accuracy": 0.3902,
+          "precision": 0.3942,
+          "recall": 0.6733,
+          "f1": 0.4973,
+          "false_on": 209,
+          "false_off": 66,
+          "confusion": {
+            "tp": 136,
+            "tn": 40,
+            "fp": 209,
+            "fn": 66
+          }
+        },
+        "hard": {
+          "n": 751,
+          "accuracy": 0.5646,
+          "precision": 0.5574,
+          "recall": 0.633,
+          "f1": 0.5928,
+          "false_on": 189,
+          "false_off": 138,
+          "confusion": {
+            "tp": 238,
+            "tn": 186,
+            "fp": 189,
+            "fn": 138
+          }
+        },
+        "medium": {
+          "n": 1054,
+          "accuracy": 0.7078,
+          "precision": 0.7249,
+          "recall": 0.6786,
+          "f1": 0.701,
+          "false_on": 137,
+          "false_off": 171,
+          "confusion": {
+            "tp": 361,
+            "tn": 385,
+            "fp": 137,
+            "fn": 171
+          }
+        }
+      },
+      "by_background_family": {
+        "enclosure": {
+          "n": 372,
+          "accuracy": 0.6586,
+          "precision": 0.622,
+          "recall": 0.7303,
+          "f1": 0.6718,
+          "false_on": 79,
+          "false_off": 48,
+          "confusion": {
+            "tp": 130,
+            "tn": 115,
+            "fp": 79,
+            "fn": 48
+          }
+        },
+        "metal": {
+          "n": 188,
+          "accuracy": 0.6596,
+          "precision": 0.6569,
+          "recall": 0.6979,
+          "f1": 0.6768,
+          "false_on": 35,
+          "false_off": 29,
+          "confusion": {
+            "tp": 67,
+            "tn": 57,
+            "fp": 35,
+            "fn": 29
+          }
+        },
+        "pcb": {
+          "n": 1979,
+          "accuracy": 0.6372,
+          "precision": 0.6199,
+          "recall": 0.6968,
+          "f1": 0.6561,
+          "false_on": 420,
+          "false_off": 298,
+          "confusion": {
+            "tp": 685,
+            "tn": 576,
+            "fp": 420,
+            "fn": 298
+          }
+        },
+        "plastic": {
+          "n": 274,
+          "accuracy": 0.6533,
+          "precision": 0.6102,
+          "recall": 0.806,
+          "f1": 0.6945,
+          "false_on": 69,
+          "false_off": 26,
+          "confusion": {
+            "tp": 108,
+            "tn": 71,
+            "fp": 69,
+            "fn": 26
+          }
+        },
+        "studio": {
+          "n": 187,
+          "accuracy": 0.615,
+          "precision": 0.6528,
+          "recall": 0.5,
+          "f1": 0.5663,
+          "false_on": 25,
+          "false_off": 47,
+          "confusion": {
+            "tp": 47,
+            "tn": 68,
+            "fp": 25,
+            "fn": 47
+          }
+        }
+      },
+      "distractor_scenes": {
+        "count": 78,
+        "predicted_on": 44
+      }
+    }
+  },
+  "dataset": "generated_20k",
+  "split": "test",
+  "image_size": 128,
+  "subset_seed": null,
+  "provenance": {
+    "generated_at": "2026-11-23T12:12:32+00:00",
+    "git_commit": "2b749a56d",
+    "git_dirty": false,
+    "machine": "Windows AMD64 \u00b7 Intel64 Family 6 Model 78 Stepping 3, GenuineIntel",
+    "python": "3.13.7"
+  }
+}
