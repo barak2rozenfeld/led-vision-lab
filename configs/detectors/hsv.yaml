@@ -1,0 +1,13 @@
+# HSV baseline detector — thresholds calibrated with scripts/calibrate_hsv.py
+# on the train split of a generated dataset (never on the test split).
+
+work_size: 128               # image is resized to work_size x work_size first
+background_kernel_frac: 0.9  # median-blur kernel for local background, as a fraction of work_size
+                             # (must exceed the LED glow, otherwise the glow becomes "background")
+v_min: 80                    # minimum HSV value (brightness) for a candidate pixel
+excess_min: 35.0             # minimum brightness above local background for a candidate pixel
+saturation_weight: 0.5       # bonus for saturated (coloured) bright pixels
+min_area_frac: 0.0015        # ignore blobs smaller than this fraction of the image
+halo_weight: 1.0             # bonus for light spilling around the blob (lit LEDs glow, shiny pads don't)
+on_threshold: 100.0          # blob score above which the LED is ON
+confidence_scale: 18.0       # softness of the confidence curve around the threshold
