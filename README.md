@@ -79,12 +79,24 @@ source .venv/bin/activate
 pytest
 ```
 
-## Generating a Dataset
+## Synthetic Dataset
 
-> Available from Phase 1.
+LED images are generated procedurally: 14 LED colors, 6 shapes (round, square, rectangular, dome, side-view dome, SMD), 15 background styles, ambient lighting, glare, occlusion, camera noise/blur, false-positive distractors, and four difficulty levels. Every image has a 40-field metadata row (`metadata.csv`) and every run is reproducible from its seed.
+
+![Sample grid — one ON and one OFF example per background](docs/images/sample_grid.jpg)
+
+| Config | Scenes | Export sizes (px) | Images | Focus |
+|--------|-------:|-------------------|-------:|-------|
+| `configs/dataset/default.yaml` | 100 | 64, 128, 224, 256 | 400 | Quick smoke run |
+| `configs/dataset/large_scale.yaml` | 50,000 | 64, 128, 224, 256 | 200,000 | General mix |
+| `configs/dataset/pcb_1m.yaml` | 250,000 | 64, 128, 224, 256 | 1,000,000 | ~65 % PCB backgrounds |
+| `configs/dataset/high_res.yaml` | 10,000 | 512, 1024, 2048 | 30,000 | High-resolution |
+
+Generated datasets are not committed. Small samples live in [`data/samples/images`](data/samples/images).
 
 ```bash
-python scripts/generate_dataset.py --config configs/dataset/default.yaml
+uv run python scripts/generate_dataset.py --config configs/dataset/pcb_1m.yaml
+uv run python scripts/make_samples.py --dataset data/generated_pcb_1m   # refresh samples + grid
 ```
 
 ## Running the API
