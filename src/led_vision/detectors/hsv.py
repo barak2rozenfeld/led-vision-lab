@@ -45,7 +45,15 @@ class HSVDetector(LedDetector):
     def __init__(self, config: HsvConfig | None = None) -> None:
         self._cfg = config or HsvConfig()
 
-    def _predict(self, image: np.ndarray) -> Prediction:
+    @property
+    def config(self) -> HsvConfig:
+        return self._cfg
+
+    def explain(self, image: np.ndarray) -> dict[str, np.ndarray]:
+        """Intermediate maps at work_size: brightness, background estimate, score and mask."""
+        return self._maps(image)
+
+    def _maps(self, image: np.ndarray) -> dict[str, np.ndarray]:
         cfg = self._cfg
         small = cv2.resize(image, (cfg.work_size, cfg.work_size), interpolation=cv2.INTER_AREA)
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
@@ -60,6 +68,12 @@ class HSVDetector(LedDetector):
 
         mask = ((score >= cfg.excess_min) & (val >= cfg.v_min)).astype(np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        return {"value": val, "background": background, "excess": excess, "score": score, "mask": mask}
+
+    def _predict(self, image: np.ndarray) -> Prediction:
+        cfg = self._cfg
+        maps = self._maps(image)
+        excess, score, mask = maps["excess"], maps["score"], maps["mask"]
 
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
         total = float(cfg.work_size * cfg.work_size)

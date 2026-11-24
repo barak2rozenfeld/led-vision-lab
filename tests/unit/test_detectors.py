@@ -13,6 +13,7 @@ from led_vision.detectors.hsv import HSVDetector, HsvConfig, load_hsv_config
 from led_vision.detectors.registry import METHOD_CATALOG, build_detectors
 from led_vision.detectors.service import DetectionService, UnknownMethodError
 from led_vision.preprocessing.image_io import ImageTooLargeError, InvalidImageError, decode_image
+from led_vision.training.hsv_calibration import calibrate_hsv, update_yaml_values
 
 REPO = Path(__file__).resolve().parents[2]
 DETECTOR_CONFIGS = REPO / "configs" / "detectors"
@@ -107,6 +108,14 @@ def test_hsv_debug_explains_decision(hsv: HSVDetector) -> None:
     assert debug["score"] >= debug["threshold"]
 
 
+def test_hsv_explain_returns_maps(hsv: HSVDetector) -> None:
+    maps = hsv.explain(lit_led(256))
+    size = hsv.config.work_size
+    assert set(maps) == {"value", "background", "excess", "score", "mask"}
+    assert all(m.shape == (size, size) for m in maps.values())
+    assert maps["mask"][size // 2, size // 2] == 1
+
+
 def test_hsv_config_rejects_unknown_keys(tmp_path: Path) -> None:
     path = tmp_path / "hsv.yaml"
     path.write_text("v_min: 80\nnot_a_key: 1\n", encoding="utf-8")
@@ -121,6 +130,35 @@ def test_hsv_config_missing_file(tmp_path: Path) -> None:
 
 def test_hsv_defaults_are_valid() -> None:
     assert HSVDetector(HsvConfig()).detect(dark_led()).state == "OFF"
+
+
+# --- calibration ------------------------------------------------------------
+
+def test_calibration_separates_lit_from_dark() -> None:
+    images = [(True, lit_led()), (True, lit_led(color=(40, 255, 40))), (False, dark_led()),
+              (False, np.full((128, 128, 3), 200, np.uint8))]
+    seen: list[float] = []
+    result = calibrate_hsv(images, HsvConfig(), grid={"halo_weight": [0.0, 1.0]},
+                           progress=lambda t: seen.append(t.accuracy))
+    assert result.best.accuracy == 1.0
+    assert len(result.trials) == len(seen) == 2
+    assert set(result.best_params()) == {"halo_weight", "on_threshold"}
+
+
+def test_calibration_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        calibrate_hsv([], HsvConfig())
+    with pytest.raises(ValueError, match="not_a_field"):
+        calibrate_hsv([(True, lit_led())], HsvConfig(), grid={"not_a_field": [1.0]})
+
+
+def test_update_yaml_values_keeps_comments(tmp_path: Path) -> None:
+    path = tmp_path / "hsv.yaml"
+    path.write_text("# header\nv_min: 80   # keep me\non_threshold: 90.0\n", encoding="utf-8")
+    update_yaml_values(path, {"on_threshold": 100.0})
+    assert path.read_text(encoding="utf-8") == "# header\nv_min: 80   # keep me\non_threshold: 100.0\n"
+    with pytest.raises(ValueError):
+        update_yaml_values(path, {"missing": 1.0})
 
 
 # --- registry and service ---------------------------------------------------
