@@ -37,6 +37,7 @@ led-vision-lab/
 ├── configs/              # YAML configuration files
 ├── data/                 # Sample images (generated data is gitignored)
 ├── artifacts/            # Trained models and benchmark results
+├── notebooks/            # Google Colab notebooks (dataset, HSV baseline)
 ├── tests/                # Unit, integration, and API tests
 ├── scripts/              # Utility scripts
 └── web/                  # Web application (Phase 9)
@@ -112,6 +113,22 @@ Every statistic shown in the UI or served by the API is computed by a script and
 | Error analysis grids | `scripts/error_gallery.py --dataset data/generated_20k --split val` | `artifacts/benchmarks/errors_*.jpg` |
 
 The test split is never used for calibration or training. The two JSON reports are committed, so the UI shows measured numbers even without the API.
+
+## Notebooks (Google Colab)
+
+Each notebook clones the repo, generates the 20K dataset from the same seed (a few minutes on Colab's CPU), and rebuilds the numbers above step by step, checking them against the committed reports.
+
+| Notebook | Covers | |
+|----------|--------|---|
+| [`01_dataset.ipynb`](notebooks/01_dataset.ipynb) | Generation, composition, ON/OFF balance per difficulty, reproducibility check, sample grid | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/barak2rozenfeld/led-vision-lab/blob/master/notebooks/01_dataset.ipynb) |
+| [`02_hsv_baseline.ipynb`](notebooks/02_hsv_baseline.ipynb) | HSV algorithm with intermediate maps, train-split calibration, test benchmark, error analysis | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/barak2rozenfeld/led-vision-lab/blob/master/notebooks/02_hsv_baseline.ipynb) |
+
+To run them locally:
+
+```bash
+uv sync --extra dev --extra notebooks
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/01_dataset.ipynb
+```
 
 ## Web UI
 
