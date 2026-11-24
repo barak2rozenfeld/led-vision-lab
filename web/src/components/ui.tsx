@@ -1,7 +1,25 @@
 import { motion } from "framer-motion";
-import { Database } from "lucide-react";
+import { BookOpen, Database } from "lucide-react";
 import type { ReactNode } from "react";
+import { colabUrl, NOTEBOOKS, type NotebookId } from "../data/notebooks";
 import type { DataOrigin, LedState, Provenance, ResultSource } from "../types";
+
+/** Opens a project notebook in Google Colab. */
+export function ColabLink({ notebook, compact = false }: { notebook: NotebookId; compact?: boolean }) {
+  return (
+    <a
+      href={colabUrl(notebook)}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title={`Open ${NOTEBOOKS[notebook].file} in Google Colab`}
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber/40 px-2.5 py-0.5 font-mono text-[10px] text-amber transition hover:bg-amber/10"
+    >
+      <BookOpen size={12} />
+      {compact ? "Colab" : `Open in Colab · ${NOTEBOOKS[notebook].title}`}
+    </a>
+  );
+}
 
 /** Says where the numbers in a panel came from and how to regenerate them. */
 export function ProvenanceNote({
@@ -9,11 +27,13 @@ export function ProvenanceNote({
   provenance,
   facts,
   command,
+  notebook,
 }: {
   origin: DataOrigin;
   provenance: Provenance;
   facts: string[];
   command: string;
+  notebook?: NotebookId;
 }) {
   const date = new Date(provenance.generated_at).toLocaleString("en-GB", {
     dateStyle: "medium",
@@ -32,6 +52,7 @@ export function ProvenanceNote({
           {origin === "api" ? "live from API" : "committed snapshot"}
         </span>
         <span className="font-mono">{facts.join(" · ")}</span>
+        {notebook && <ColabLink notebook={notebook} />}
         <span className="ml-auto text-slate-500 group-open:hidden">details ▾</span>
       </summary>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono">

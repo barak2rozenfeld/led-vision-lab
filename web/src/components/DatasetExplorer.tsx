@@ -176,6 +176,7 @@ export function DatasetExplorer({
           provenance={s.provenance}
           facts={[s.dataset, `seed ${s.config.seed ?? "?"}`, "counted from metadata.csv"]}
           command={`uv run python scripts/compute_dataset_stats.py --dataset data/${s.dataset}`}
+          notebook="dataset"
         />
       </div>
       </>

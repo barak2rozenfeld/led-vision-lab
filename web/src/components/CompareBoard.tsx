@@ -16,7 +16,7 @@ import { METHODS, METHOD_BY_ID } from "../data/methods";
 import { prettyLabel } from "../data/samples";
 import type { Sourced } from "../hooks/useBackendData";
 import type { BenchmarkReport, MethodBenchmark, MethodId, MethodStatus } from "../types";
-import { ProvenanceNote, Section } from "./ui";
+import { ColabLink, ProvenanceNote, Section } from "./ui";
 
 const tooltipStyle = {
   contentStyle: { background: "#0d151e", border: "1px solid #ffffff1a", borderRadius: 12 },
@@ -99,6 +99,11 @@ export function CompareBoard({
               >
                 {STATUS_LABEL[status]}
               </p>
+              {m.notebook && (
+                <div className="mt-2">
+                  <ColabLink notebook={m.notebook} compact />
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -123,6 +128,7 @@ export function CompareBoard({
                 `${report.image_size} px`,
               ]}
               command={`uv run python scripts/run_benchmark.py --dataset data/${report.dataset} --split ${report.split} --size ${report.image_size}`}
+              notebook="hsv"
             />
           </div>
 

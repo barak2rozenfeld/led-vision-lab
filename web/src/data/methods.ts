@@ -1,4 +1,5 @@
 import type { MethodId } from "../types";
+import type { NotebookId } from "./notebooks";
 
 export interface MethodInfo {
   id: MethodId;
@@ -8,6 +9,7 @@ export interface MethodInfo {
   phase: string;
   blurb: string;
   accent: string;
+  notebook?: NotebookId;
 }
 
 export const METHODS: MethodInfo[] = [
@@ -19,6 +21,7 @@ export const METHODS: MethodInfo[] = [
     phase: "Baseline",
     blurb: "Brightness above the local background, a colour bonus and a glow check. No training.",
     accent: "#38bdf8",
+    notebook: "hsv",
   },
   {
     id: "template",
